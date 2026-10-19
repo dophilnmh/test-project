@@ -1,0 +1,273 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import { Layout } from '@/components/layout/Layout';
+import { MpesaCheckoutButton } from '@/components/payments/MpesaCheckoutButton';
+import { formatKsh } from '@/lib/currency';
+import { Package2, ShoppingBag, Truck } from 'lucide-react';
+
+export default function ShopPage() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [feedback, setFeedback] = useState('');
+  const [error, setError] = useState('');
+  const [orderState, setOrderState] = useState({});
+
+  const loadProducts = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/shop/products', { cache: 'no-store' });
+      const data = await response.json();
+      if (response.ok && data?.success) {
+        setProducts(data.products || []);
+
+        const initial = {};
+        for (const product of data.products || []) {
+          initial[product._id] = {
+            quantity: 1,
+            buyerPhone: '',
+            buyerEmail: '',
+            deliveryLocation: '',
+            notes: '',
+          };
+        }
+        setOrderState(initial);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const totals = useMemo(() => {
+    const items = products.length;
+    const stock = products.reduce(
+      (sum, item) => sum + Number(item.stock || 0),
+      0
+    );
+    return { items, stock };
+  }, [products]);
+
+  const updateField = (productId, key, value) => {
+    setOrderState((prev) => ({
+      ...prev,
+      [productId]: {
+        ...(prev[productId] || {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  return (
+    <Layout>
+      <section className="container mx-auto px-4 py-14 md:py-20">
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+              Merch Store
+            </p>
+            <h1 className="mt-2 text-3xl font-bold text-foreground md:text-4xl">
+              Official Merchandise Shop
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
+              Sell branded products, track inventory, and process orders from
+              one centralized commerce module.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-sm md:w-[320px]">
+            <article className="rounded-xl border border-border bg-card/80 p-3">
+              <p className="text-xs text-muted-foreground">Products</p>
+              <p className="text-xl font-bold text-foreground">
+                {totals.items}
+              </p>
+            </article>
+            <article className="rounded-xl border border-border bg-card/80 p-3">
+              <p className="text-xs text-muted-foreground">Units In Stock</p>
+              <p className="text-xl font-bold text-foreground">
+                {totals.stock}
+              </p>
+            </article>
+          </div>
+        </div>
+
+        {feedback ? (
+          <div className="mb-4 rounded-xl border border-border bg-card/80 px-4 py-3 text-sm text-success">
+            {feedback}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="mb-4 rounded-xl border border-border bg-card/80 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="rounded-2xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+            Loading products...
+          </div>
+        ) : null}
+
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {products.map((product) => {
+            const item = orderState[product._id] || {};
+            const quantity = Math.max(1, Number(item.quantity || 1));
+            const amount = Number(product.price || 0) * quantity;
+
+            return (
+              <article
+                key={product._id}
+                className="overflow-hidden rounded-2xl border border-border bg-card/85 shadow-[0_12px_30px_-22px_rgba(59,130,246,.8)]"
+              >
+                <div className="relative h-40 bg-[linear-gradient(145deg,rgba(30,64,175,.42),rgba(59,130,246,.08))] p-4">
+                  {Array.isArray(product.imageUrls) && product.imageUrls[0] ? (
+                    <Image
+                      src={product.imageUrls[0]}
+                      alt={product.name}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                  ) : product.imageUrl ? (
+                    <Image
+                      src={product.imageUrl}
+                      alt={product.name}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                  ) : null}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary">
+                      {product.category}
+                    </span>
+                    <span className="inline-flex rounded-full bg-card/70 px-2.5 py-1 text-[10px] font-bold text-foreground">
+                      {product.status.replace('_', ' ').toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  <h2 className="line-clamp-2 text-xl font-semibold text-foreground">
+                    {product.name}
+                  </h2>
+                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                    {product.description}
+                  </p>
+
+                  <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                    <li className="flex items-center gap-2">
+                      <Package2 className="h-4 w-4 text-primary" />
+                      Stock: {product.stock}
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <ShoppingBag className="h-4 w-4 text-primary" />
+                      Unit Price: {formatKsh(product.price)}
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-primary" />
+                      Delivery supported
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Package2 className="h-4 w-4 text-primary" />
+                      Images:{' '}
+                      {Array.isArray(product.imageUrls) &&
+                      product.imageUrls.length > 0
+                        ? product.imageUrls.length
+                        : product.imageUrl
+                          ? 1
+                          : 0}
+                    </li>
+                  </ul>
+
+                  <div className="mt-4 grid gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max={Math.max(1, Number(product.stock || 1))}
+                      value={item.quantity || 1}
+                      onChange={(e) =>
+                        updateField(product._id, 'quantity', e.target.value)
+                      }
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Quantity"
+                    />
+                    <input
+                      type="email"
+                      value={item.buyerEmail || ''}
+                      onChange={(e) =>
+                        updateField(product._id, 'buyerEmail', e.target.value)
+                      }
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Email for receipt"
+                    />
+                    <input
+                      type="tel"
+                      value={item.buyerPhone || ''}
+                      onChange={(e) =>
+                        updateField(product._id, 'buyerPhone', e.target.value)
+                      }
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Phone"
+                    />
+                    <input
+                      type="text"
+                      value={item.deliveryLocation || ''}
+                      onChange={(e) =>
+                        updateField(
+                          product._id,
+                          'deliveryLocation',
+                          e.target.value
+                        )
+                      }
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Delivery location"
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between border-t border-border/70 pt-4">
+                    <div>
+                      <p className="text-lg font-bold text-foreground">
+                        {formatKsh(amount)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Order total
+                      </p>
+                    </div>
+                    {Number(product.stock || 0) > 0 ? (
+                      <MpesaCheckoutButton
+                        eventId={product._id}
+                        eventTitle={product.name}
+                        paymentType="merchandise"
+                        productId={product._id}
+                        amount={Number(product.price || 0)}
+                        quantity={quantity}
+                        maxQuantity={product.stock}
+                        customerEmail={item.buyerEmail || ''}
+                        deliveryLocation={item.deliveryLocation || ''}
+                        notes={item.notes || ''}
+                        onPaymentSuccess={() => {
+                          setFeedback('Merchandise payment confirmed.');
+                          loadProducts();
+                        }}
+                        buttonLabel="Pay by Card"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-muted-foreground">
+                        Out of stock
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </Layout>
+  );
+}

@@ -1,0 +1,79 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Update organizer layout header consistency",
+			"type": "shell",
+			"command": "Set-Content",
+			"args": [
+				"-Path",
+				"src/app/organizer/layout.jsx",
+				"-Value",
+				"import { Layout } from '@/components/layout/Layout';\n\nexport default function OrganizerLayout({ children }) {\n  return <Layout>{children}</Layout>;\n}\n"
+			]
+		},
+		{
+			"label": "Rewrite organizer layout with shared layout",
+			"type": "shell",
+			"command": "$txt = @\"\nimport { Layout } from '@/components/layout/Layout';\n\nexport default function OrganizerLayout({ children }) {\n  return <Layout>{children}</Layout>;\n}\n\"@; Set-Content -Path src/app/organizer/layout.jsx -Value $txt"
+		},
+		{
+			"label": "Rewrite organizer layout lines",
+			"type": "shell",
+			"command": "Set-Content -Path src/app/organizer/layout.jsx -Value @(\"import { Layout } from '@/components/layout/Layout';\",\"\",\"export default function OrganizerLayout({ children }) {\",\"  return <Layout>{children}</Layout>;\",\"}\")"
+		},
+		{
+			"label": "Rewrite organizer layout via cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"(echo import { Layout } from '@/components/layout/Layout';&&echo.&&echo export default function OrganizerLayout({ children }) {&&echo   return ^<Layout^>{children}^</Layout^>;&&echo })>src\\app\\organizer\\layout.jsx"
+			]
+		},
+		{
+			"label": "Rewrite organizer layout via cmd no apostrophe",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"(echo import { Layout } from \"@/components/layout/Layout\";&&echo.&&echo export default function OrganizerLayout({ children }) {&&echo   return ^<Layout^>{children}^</Layout^>;&&echo })>src\\app\\organizer\\layout.jsx"
+			]
+		},
+		{
+			"label": "Rewrite organizer layout with dotnet write",
+			"type": "shell",
+			"command": "[IO.File]::WriteAllText('src/app/organizer/layout.jsx', \"import { Layout } from \\\"@/components/layout/Layout\\\";`n`nexport default function OrganizerLayout({ children }) {`n  return <Layout>{children}</Layout>;`n}`n\")"
+		},
+		{
+			"label": "Rewrite organizer layout with here-string safe",
+			"type": "shell",
+			"command": "$txt = @'\nimport { Layout } from \"@/components/layout/Layout\";\n\nexport default function OrganizerLayout({ children }) {\n  return <Layout>{children}</Layout>;\n}\n'@; [IO.File]::WriteAllText(\"src/app/organizer/layout.jsx\", $txt)"
+		},
+		{
+			"label": "Rewrite organizer layout final attempt",
+			"type": "shell",
+			"command": "$txt = @'\nimport { Layout } from \"@/components/layout/Layout\";\n\nexport default function OrganizerLayout({ children }) {\n  return <Layout>{children}</Layout>;\n}\n'@; $path = 'src/app/organizer/layout.jsx'; [IO.File]::WriteAllText($path, $txt)"
+		},
+		{
+			"label": "Verify organizer layout content",
+			"type": "shell",
+			"command": "Get-Content -Path src/app/organizer/layout.jsx"
+		},
+		{
+			"label": "Fix organizer layout import quotes",
+			"type": "shell",
+			"command": "$txt = @'\nimport { Layout } from \"@/components/layout/Layout\";\n\nexport default function OrganizerLayout({ children }) {\n  return <Layout>{children}</Layout>;\n}\n'@; $txt = $txt -replace '\\\\\"','\"'; Set-Content -Path src/app/organizer/layout.jsx -Value $txt"
+		},
+		{
+			"label": "Rewrite organizer layout with literal import",
+			"type": "shell",
+			"command": "$txt = @'\nimport { Layout } from '@/components/layout/Layout';\n\nexport default function OrganizerLayout({ children }) {\n  return <Layout>{children}</Layout>;\n}\n'@; Set-Content -Path src/app/organizer/layout.jsx -Value $txt"
+		},
+		{
+			"label": "Verify organizer layout after fix",
+			"type": "shell",
+			"command": "Get-Content -Path src/app/organizer/layout.jsx"
+		}
+	]
+}

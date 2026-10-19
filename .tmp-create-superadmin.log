@@ -1,0 +1,4 @@
+[dotenv@17.2.3] injecting env (25) from .env -- tip: ‘‹÷¥©≈  load multiple .env files with { path: ['.env.local', '.env'] }
+[dotenv@17.2.3] injecting env (0) from .env.local -- tip: ≠ÉÊ— sync secrets across teammates & machines: https://dotenvx.com/ops
+PRIMARY_FAILED ECONNREFUSED
+FAILED NO_DB_CONNECTION
