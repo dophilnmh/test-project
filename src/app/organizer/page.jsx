@@ -57,7 +57,10 @@ function buildTierDrafts(types = []) {
 }
 
 function countWords(value) {
-  return String(value || '').trim().split(/\s+/).filter(Boolean).length;
+  return String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 function emptyContestant() {
@@ -429,19 +432,19 @@ export default function OrganizerDashboardPage() {
           : '/api/voting/campaigns',
         {
           method: editingOrganizerPollId ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId: selectedEventId,
-          title: organizerPollForm.title,
-          description: organizerPollForm.description,
-          category: activeEvent?.title || 'General',
-          startDateTime: organizerPollForm.startDateTime,
-          endDateTime: organizerPollForm.endDateTime,
-          nominees,
-          status: 'pending',
-          resultVisibility: 'live',
-          publicVoteDisplay: 'count',
-          commissionPercent: 20,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: selectedEventId,
+            title: organizerPollForm.title,
+            description: organizerPollForm.description,
+            category: activeEvent?.title || 'General',
+            startDateTime: organizerPollForm.startDateTime,
+            endDateTime: organizerPollForm.endDateTime,
+            nominees,
+            status: 'pending',
+            resultVisibility: 'live',
+            publicVoteDisplay: 'count',
+            commissionPercent: 20,
           }),
         }
       );
@@ -488,7 +491,9 @@ export default function OrganizerDashboardPage() {
             }))
           : [emptyPollNominee(), emptyPollNominee()],
     });
-    setOrganizerPollMessage('Editing poll. Saving will resubmit it for approval.');
+    setOrganizerPollMessage(
+      'Editing poll. Saving will resubmit it for approval.'
+    );
   };
 
   const deleteOrganizerPoll = async (pollId) => {
@@ -1231,7 +1236,9 @@ export default function OrganizerDashboardPage() {
           setError('Each ticket type can only be selected once.');
           return;
         }
-        if ((form.tiers || []).some((tier) => countWords(tier.description) > 1000)) {
+        if (
+          (form.tiers || []).some((tier) => countWords(tier.description) > 1000)
+        ) {
           setError('Each ticket description must be 1000 words or fewer.');
           return;
         }
@@ -2120,9 +2127,11 @@ export default function OrganizerDashboardPage() {
                 {organizerPolls.map((poll) => {
                   const pollPath = `/voting/${poll._id}`;
                   const nominees = poll.contestants || poll.nominees || [];
-                  const canDeletePoll = ['draft', 'pending', 'archived'].includes(
-                    String(poll.status || '')
-                  );
+                  const canDeletePoll = [
+                    'draft',
+                    'pending',
+                    'archived',
+                  ].includes(String(poll.status || ''));
                   return (
                     <article
                       key={poll._id}

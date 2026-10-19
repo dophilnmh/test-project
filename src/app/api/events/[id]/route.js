@@ -17,7 +17,10 @@ function slugTierName(name) {
 }
 
 function countWords(value) {
-  return String(value || '').trim().split(/\s+/).filter(Boolean).length;
+  return String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 function normalizeEventType(value) {
@@ -275,7 +278,10 @@ export async function PUT(req, context) {
       )
     ) {
       return NextResponse.json(
-        { success: false, message: 'Ticket descriptions cannot exceed 1000 words.' },
+        {
+          success: false,
+          message: 'Ticket descriptions cannot exceed 1000 words.',
+        },
         { status: 400 }
       );
     }
@@ -492,8 +498,17 @@ export async function PATCH(req, context) {
     if (hasTierUpdate) {
       if (session.user.role !== 'superadmin') {
         return NextResponse.json(
-          { success: false, message: 'Only the system owner can edit live ticket tiers.' },
+          {
+            success: false,
+            message: 'Only the system owner can edit live ticket tiers.',
+          },
           { status: 403 }
+        );
+      }
+      if (existing.eventType === 'competition') {
+        return NextResponse.json(
+          { success: false, message: 'Competition events do not have ticket tiers.' },
+          { status: 400 }
         );
       }
 
@@ -505,13 +520,25 @@ export async function PATCH(req, context) {
         const totalSlots = Math.floor(Number(tier?.totalSlots));
         if (!name || names.has(name)) {
           return NextResponse.json(
-            { success: false, message: 'Ticket tier names must be unique and valid.' },
+            {
+              success: false,
+              message: 'Ticket tier names must be unique and valid.',
+            },
             { status: 400 }
           );
         }
-        if (!Number.isFinite(price) || price < 0 || !Number.isFinite(totalSlots) || totalSlots < 0) {
+        if (
+          !Number.isFinite(price) ||
+          price < 0 ||
+          !Number.isFinite(totalSlots) ||
+          totalSlots < 0
+        ) {
           return NextResponse.json(
-            { success: false, message: 'Ticket price and capacity must be valid non-negative numbers.' },
+            {
+              success: false,
+              message:
+                'Ticket price and capacity must be valid non-negative numbers.',
+            },
             { status: 400 }
           );
         }
@@ -536,7 +563,10 @@ export async function PATCH(req, context) {
         }
         if (countWords(tier?.description) > 1000) {
           return NextResponse.json(
-            { success: false, message: 'Ticket descriptions cannot exceed 1000 words.' },
+            {
+              success: false,
+              message: 'Ticket descriptions cannot exceed 1000 words.',
+            },
             { status: 400 }
           );
         }

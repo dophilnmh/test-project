@@ -167,6 +167,7 @@ export async function GET(req) {
         suspended: Number(statusSummary.suspended || 0),
         totalEvents: totalEventsAllOrganizers,
       },
+      canDeleteOrganizers: session.user.role === 'superadmin',
     });
   } catch (error) {
     return NextResponse.json(
@@ -337,6 +338,70 @@ export async function PATCH(req) {
       {
         success: false,
         message: error.message || 'Unable to update organizer status',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const session = await auth();
+    if (session?.user?.role !== 'superadmin') {
+      return NextResponse.json(
+        { success: false, message: 'Only the system owner can delete organizers.' },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+    const organizerId = String(body?.organizerId || '').trim();
+    const organizerIds = Array.isArray(body?.organizerIds)
+      ? body.organizerIds.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+    const targetIds = Array.from(
+      new Set([...(organizerId ? [organizerId] : []), ...organizerIds])
+    );
+
+    if (!targetIds.length || targetIds.some((id) => !/^[a-f\d]{24}$/i.test(id))) {
+      return NextResponse.json(
+        { success: false, message: 'Provide valid organizer account IDs.' },
+        { status: 400 }
+      );
+    }
+
+    await connect();
+    const organizers = await Organizer.find({ _id: { $in: targetIds } })
+      .select('_id email')
+      .lean();
+    if (!organizers.length) {
+      return NextResponse.json(
+        { success: false, message: 'No matching organizer accounts were found.' },
+        { status: 404 }
+      );
+    }
+
+    const organizerEmails = organizers
+      .map((organizer) => String(organizer.email || '').trim().toLowerCase())
+      .filter(Boolean);
+    await Promise.all([
+      Organizer.deleteMany({ _id: { $in: organizers.map((item) => item._id) } }),
+      User.deleteMany({ email: { $in: organizerEmails }, role: 'organizer' }),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      deletedCount: organizers.length,
+      message:
+        organizers.length === 1
+          ? 'Organizer account deleted. Events and payment history were retained.'
+          : `${organizers.length} organizer accounts deleted. Events and payment history were retained.`,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: error.message || 'Unable to delete organizer accounts.',
       },
       { status: 500 }
     );

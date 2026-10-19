@@ -20,7 +20,10 @@ function slugTierName(name) {
 }
 
 function countWords(value) {
-  return String(value || '').trim().split(/\s+/).filter(Boolean).length;
+  return String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 function normalizeEventType(value) {
@@ -347,7 +350,10 @@ export async function POST(req) {
       )
     ) {
       return NextResponse.json(
-        { success: false, message: 'Ticket descriptions cannot exceed 1000 words.' },
+        {
+          success: false,
+          message: 'Ticket descriptions cannot exceed 1000 words.',
+        },
         { status: 400 }
       );
     }

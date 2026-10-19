@@ -25,6 +25,7 @@ export default function AdminEventsPage() {
   const [error, setError] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [canEditTicketTiers, setCanEditTicketTiers] = useState(false);
+  const [ticketTierError, setTicketTierError] = useState('');
   const [savingId, setSavingId] = useState('');
   const [savingTicketTiers, setSavingTicketTiers] = useState(false);
   const [deletingId, setDeletingId] = useState('');
@@ -111,6 +112,7 @@ export default function AdminEventsPage() {
 
   const saveTicketTiers = async (eventId, tiers) => {
     setSavingTicketTiers(true);
+    setTicketTierError('');
     setError('');
     try {
       const response = await fetch(`/api/events/${eventId}`, {
@@ -131,9 +133,10 @@ export default function AdminEventsPage() {
         throw new Error(data?.message || 'Unable to update ticket tiers.');
       }
       setSelectedEvent(data.event);
+      setTicketTierError('');
       await load();
     } catch (saveError) {
-      setError(saveError.message || 'Unable to update ticket tiers.');
+      setTicketTierError(saveError.message || 'Unable to update ticket tiers.');
     } finally {
       setSavingTicketTiers(false);
     }
@@ -317,6 +320,7 @@ export default function AdminEventsPage() {
         canEditTicketTiers={canEditTicketTiers}
         onSaveTicketTiers={saveTicketTiers}
         savingTicketTiers={savingTicketTiers}
+        ticketTierError={ticketTierError}
       />
 
       <div className="flex items-center justify-end gap-2">

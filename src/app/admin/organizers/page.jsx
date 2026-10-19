@@ -10,6 +10,7 @@ import {
   MapPin,
   Phone,
   Search,
+  Trash2,
 } from 'lucide-react';
 
 function formatDate(value) {
@@ -43,6 +44,7 @@ export default function AdminOrganizersPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState([]);
+  const [canDeleteOrganizers, setCanDeleteOrganizers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -84,6 +86,7 @@ export default function AdminOrganizersPage() {
         }
 
         setOrganizers(data.organizers || []);
+        setCanDeleteOrganizers(Boolean(data.canDeleteOrganizers));
         setPagination(
           data.pagination || {
             page: 1,
@@ -257,6 +260,45 @@ export default function AdminOrganizersPage() {
     );
   };
 
+  const deleteOrganizers = async (targetIds) => {
+    if (!canDeleteOrganizers || !targetIds.length) return;
+    const count = targetIds.length;
+    const confirmed = window.confirm(
+      `Permanently delete ${count} organizer account${count === 1 ? '' : 's'}? Their events and payment history will remain.`
+    );
+    if (!confirmed) return;
+
+    setUpdating(true);
+    setError('');
+    setFeedback('');
+    try {
+      const response = await fetch('/api/admin/organizers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          count === 1 ? { organizerId: targetIds[0] } : { organizerIds: targetIds }
+        ),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        setError(data?.message || 'Unable to delete organizer accounts.');
+        return;
+      }
+      setFeedback(data.message || 'Organizer account deleted.');
+      setSelectedIds([]);
+      await loadOrganizers({
+        page: pagination.page,
+        q: query,
+        status: statusFilter,
+        limit: pageSize,
+      });
+    } catch {
+      setError('Unable to delete organizer accounts right now.');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const toggleSelectAllVisible = () => {
     const visibleIds = organizers.map((item) => item.id);
     const allSelected =
@@ -421,6 +463,17 @@ export default function AdminOrganizersPage() {
           >
             Bulk Suspend
           </button>
+          {canDeleteOrganizers ? (
+            <button
+              type="button"
+              onClick={() => deleteOrganizers(selectedIds)}
+              disabled={updating || !selectedIds.length}
+              className="inline-flex items-center gap-1.5 rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete selected
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -527,6 +580,17 @@ export default function AdminOrganizersPage() {
                 >
                   Suspend
                 </button>
+                {canDeleteOrganizers ? (
+                  <button
+                    type="button"
+                    onClick={() => deleteOrganizers([organizer.id])}
+                    disabled={updating}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-destructive/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete account
+                  </button>
+                ) : null}
               </div>
             </article>
           ))

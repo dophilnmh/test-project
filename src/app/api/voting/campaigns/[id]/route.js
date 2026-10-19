@@ -183,7 +183,9 @@ export async function PATCH(req, { params }) {
 
     if (isOrganizer) {
       const organizer = await Organizer.findOne({
-        email: String(session.user.email || '').trim().toLowerCase(),
+        email: String(session.user.email || '')
+          .trim()
+          .toLowerCase(),
       })
         .select('_id')
         .lean();
@@ -247,15 +249,26 @@ export async function PATCH(req, { params }) {
         const existing = existingNominees.find(
           (item) => String(item._id) === String(nominee._id || '')
         );
-        return { ...nominee, _id: existing?._id || new mongoose.Types.ObjectId() };
+        return {
+          ...nominee,
+          _id: existing?._id || new mongoose.Types.ObjectId(),
+        };
       });
       updateData.nominees = nomineesWithIds;
       updateData.contestants = nomineesWithIds;
     }
     if (isOrganizer) {
-      if (!body?.title || !body?.description || !body?.startDateTime || !body?.endDateTime) {
+      if (
+        !body?.title ||
+        !body?.description ||
+        !body?.startDateTime ||
+        !body?.endDateTime
+      ) {
         return NextResponse.json(
-          { success: false, message: 'Title, description, and poll dates are required.' },
+          {
+            success: false,
+            message: 'Title, description, and poll dates are required.',
+          },
           { status: 400 }
         );
       }
@@ -360,7 +373,9 @@ export async function DELETE(_, { params }) {
     }
     if (isOrganizer) {
       const organizer = await Organizer.findOne({
-        email: String(session.user.email || '').trim().toLowerCase(),
+        email: String(session.user.email || '')
+          .trim()
+          .toLowerCase(),
       })
         .select('_id')
         .lean();

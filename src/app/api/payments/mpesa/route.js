@@ -508,7 +508,10 @@ export async function POST(req) {
 
       if (tier.isActive === false) {
         return NextResponse.json(
-          { success: false, message: 'This ticket type is no longer available.' },
+          {
+            success: false,
+            message: 'This ticket type is no longer available.',
+          },
           { status: 409 }
         );
       }

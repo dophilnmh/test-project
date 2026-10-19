@@ -66,6 +66,9 @@ export default function AdminAnalyticsPage() {
     totalTickets: 0,
     totalOrders: 0,
     totalEvents: 0,
+    ticketPlatformEarnings: 0,
+    ticketOrganizerEarnings: 0,
+    ticketProceedsByEvent: [],
     merchPlatformEarnings: 0,
     votingPlatformEarnings: 0,
     totalPlatformEarnings: 0,
@@ -99,6 +102,9 @@ export default function AdminAnalyticsPage() {
             totalTickets: 0,
             totalOrders: 0,
             totalEvents: 0,
+            ticketPlatformEarnings: 0,
+            ticketOrganizerEarnings: 0,
+            ticketProceedsByEvent: [],
             merchPlatformEarnings: 0,
             votingPlatformEarnings: 0,
             totalPlatformEarnings: 0,
@@ -284,7 +290,20 @@ export default function AdminAnalyticsPage() {
           </p>
         ) : null}
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-xl border border-border bg-background/50 p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+              Tickets
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {formatKsh(summary.ticketPlatformEarnings)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Platform commission · Organizer share:{' '}
+              {formatKsh(summary.ticketOrganizerEarnings)}
+            </p>
+          </article>
+
           <article className="rounded-xl border border-border bg-background/50 p-4">
             <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
               Merchandise
@@ -316,6 +335,51 @@ export default function AdminAnalyticsPage() {
               {formatKsh(summary.totalPlatformEarnings)}
             </p>
           </article>
+        </div>
+
+        <div className="mt-5 overflow-x-auto rounded-xl border border-border">
+          <div className="border-b border-border bg-background/50 px-4 py-3">
+            <h3 className="text-sm font-semibold text-foreground">
+              Ticket Proceeds by Event
+            </h3>
+          </div>
+          <table className="w-full min-w-180 text-left text-sm">
+            <thead className="border-b border-border text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3">Event</th>
+                <th className="px-4 py-3">Ticket Sales</th>
+                <th className="px-4 py-3">Tickets / Orders</th>
+                <th className="px-4 py-3">Platform Earnings</th>
+                <th className="px-4 py-3">Organizer Earnings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(summary.ticketProceedsByEvent || []).length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-4 text-muted-foreground">
+                    No paid ticket proceeds in this period.
+                  </td>
+                </tr>
+              ) : (
+                summary.ticketProceedsByEvent.map((row) => (
+                  <tr key={row.id} className="border-b border-border/60 last:border-0">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-foreground">{row.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {row.organizerName || 'Unassigned organizer'}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">{formatKsh(row.ticketRevenue)}</td>
+                    <td className="px-4 py-3">
+                      {Number(row.tickets || 0).toLocaleString()} / {Number(row.orders || 0).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">{formatKsh(row.platformCommission)}</td>
+                    <td className="px-4 py-3">{formatKsh(row.organizerEarnings)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
 
         <div className="mt-5 overflow-x-auto rounded-xl border border-border">

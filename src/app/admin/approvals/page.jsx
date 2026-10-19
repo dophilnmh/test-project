@@ -250,6 +250,7 @@ export default function AdminApprovalsPage() {
       </section>
 
       <EventDetailsModal
+        key={selectedEvent?._id || 'event-details'}
         event={selectedEvent}
         open={Boolean(selectedEvent)}
         onClose={() => setSelectedEvent(null)}

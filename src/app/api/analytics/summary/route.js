@@ -16,16 +16,33 @@ function toNumber(value, fallback = 0) {
 
 function resolvePlatformCommission(row) {
   const explicit = toNumber(row?.platformCommissionAmount, Number.NaN);
-  if (!Number.isNaN(explicit)) {
-    return Math.max(0, explicit);
-  }
-
   const amount = Math.max(0, toNumber(row?.totalAmount, 0));
   const percent = Math.min(
     100,
     Math.max(0, toNumber(row?.commissionPercent, 20))
   );
+  if (!Number.isNaN(explicit) && (explicit > 0 || percent === 0)) {
+    return Math.max(0, explicit);
+  }
   return Math.round(amount * (percent / 100));
+}
+
+function resolveOrganizerEarnings(row) {
+  const amount = Math.max(0, toNumber(row?.totalAmount, 0));
+  const commission = resolvePlatformCommission(row);
+  const percent = Math.min(
+    100,
+    Math.max(0, toNumber(row?.commissionPercent, 20))
+  );
+  const explicit = toNumber(row?.organizerEarningsAmount, Number.NaN);
+  const fallback = Math.max(0, amount - commission);
+  if (
+    Number.isNaN(explicit) ||
+    (explicit === 0 && fallback > 0 && percent < 100)
+  ) {
+    return fallback;
+  }
+  return Math.max(0, explicit);
 }
 
 function parseDateParam(value) {
@@ -99,6 +116,15 @@ export async function GET(req) {
       );
       const totalEvents = await Event.countDocuments({ status: 'approved' });
 
+      const ticketPlatformEarnings = rangedPaidOrders.reduce(
+        (sum, order) => sum + resolvePlatformCommission(order),
+        0
+      );
+      const ticketOrganizerEarnings = rangedPaidOrders.reduce(
+        (sum, order) => sum + resolveOrganizerEarnings(order),
+        0
+      );
+
       const merchPlatformEarnings = rangedMerchOrders.reduce(
         (sum, order) => sum + resolvePlatformCommission(order),
         0
@@ -115,7 +141,50 @@ export async function GET(req) {
       const votingPlatformEarnings =
         votingCampaignPlatformEarnings + votingCompetitionPlatformEarnings;
       const totalPlatformEarnings =
-        merchPlatformEarnings + votingPlatformEarnings;
+        ticketPlatformEarnings + merchPlatformEarnings + votingPlatformEarnings;
+
+      const ticketEventIds = Array.from(
+        new Set(
+          rangedPaidOrders
+            .map((order) => String(order?.eventId || ''))
+            .filter(Boolean)
+        )
+      );
+      const ticketEvents = ticketEventIds.length
+        ? await Event.find({ _id: { $in: ticketEventIds } })
+            .select('title organizerName')
+            .lean()
+        : [];
+      const ticketEventById = new Map(
+        ticketEvents.map((event) => [String(event._id), event])
+      );
+      const ticketRows = new Map();
+      for (const order of rangedPaidOrders) {
+        const eventId = String(order?.eventId || '');
+        const source = ticketEventById.get(eventId);
+        const amount = Math.max(0, toNumber(order?.totalAmount, 0));
+        const commission = resolvePlatformCommission(order);
+        const earnings = resolveOrganizerEarnings(order);
+        const current = ticketRows.get(eventId) || {
+          id: eventId,
+          title: String(source?.title || order?.eventTitle || 'Untitled event'),
+          organizerName: String(source?.organizerName || ''),
+          ticketRevenue: 0,
+          tickets: 0,
+          orders: 0,
+          platformCommission: 0,
+          organizerEarnings: 0,
+        };
+        current.ticketRevenue += amount;
+        current.tickets += Math.max(0, toNumber(order?.quantity, 0));
+        current.orders += 1;
+        current.platformCommission += commission;
+        current.organizerEarnings += earnings;
+        ticketRows.set(eventId, current);
+      }
+      const ticketProceedsByEvent = Array.from(ticketRows.values()).sort(
+        (a, b) => b.ticketRevenue - a.ticketRevenue
+      );
 
       const campaignIds = rangedPaidVotingTx
         .map((transaction) => transaction?.campaignId)
@@ -193,6 +262,7 @@ export async function GET(req) {
       );
 
       const sourceBreakdown = [
+        { source: 'tickets', amount: ticketPlatformEarnings },
         { source: 'merchandise', amount: merchPlatformEarnings },
         {
           source: 'voting_campaigns',
@@ -218,6 +288,9 @@ export async function GET(req) {
           totalTickets,
           totalOrders: rangedPaidOrders.length,
           totalEvents,
+          ticketPlatformEarnings,
+          ticketOrganizerEarnings,
+          ticketProceedsByEvent,
           merchPlatformEarnings,
           votingPlatformEarnings,
           totalPlatformEarnings,

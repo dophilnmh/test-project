@@ -28,25 +28,31 @@ export function EventDetailsModal({
   canEditTicketTiers = false,
   onSaveTicketTiers,
   savingTicketTiers = false,
+  ticketTierError = '',
 }) {
   const [ticketDrafts, setTicketDrafts] = useState(() =>
     (event?.tiers || []).map((tier) => ({
-        name: String(tier.name || ''),
-        price: Number(tier.price || 0),
-        description: String(tier.description || ''),
-        isActive: tier.isActive !== false,
-        totalSlots: Number(tier.totalSlots || 0),
-        sold: Math.max(
-          0,
-          Number(tier.totalSlots || 0) - Number(tier.remainingSlots || 0)
-        ),
-      }))
+      name: String(tier.name || ''),
+      price: Number(tier.price || 0),
+      description: String(tier.description || ''),
+      isActive: tier.isActive !== false,
+      totalSlots: Number(tier.totalSlots || 0),
+      sold: Math.max(
+        0,
+        Number(tier.totalSlots || 0) - Number(tier.remainingSlots || 0)
+      ),
+    }))
   );
 
   if (!open || !event) return null;
 
   const displayedCommissionTerms =
     commissionTerms || event.commercialTerms || {};
+  const invalidTicketDrafts = ticketDrafts.some(
+    (tier) =>
+      Number(tier.totalSlots) < tier.sold ||
+      tier.description.trim().split(/\s+/).filter(Boolean).length > 1000
+  );
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
@@ -160,102 +166,133 @@ export function EventDetailsModal({
             <div className="mt-2 grid gap-2 md:grid-cols-2">
               {(canEditTicketTiers ? ticketDrafts : event.tiers).map(
                 (tier, index) => (
-                <div
-                  key={`${event._id}-${tier.name}`}
-                  className="rounded-md border border-border/60 bg-background/60 p-3 text-xs text-muted-foreground"
-                >
-                  <p className="font-semibold text-foreground">{tier.name}</p>
-                  {canEditTicketTiers ? (
-                    <div className="mt-2 space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <label>
-                          Price (KSH)
-                          <input
-                            type="number"
-                            min="0"
-                            value={tier.price}
+                  <div
+                    key={`${event._id}-${tier.name}`}
+                    className="rounded-md border border-border/60 bg-background/60 p-3 text-xs text-muted-foreground"
+                  >
+                    <p className="font-semibold text-foreground">{tier.name}</p>
+                    {canEditTicketTiers ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <label>
+                            Price (KSH)
+                            <input
+                              type="number"
+                              min="0"
+                              value={tier.price}
+                              onChange={(inputEvent) =>
+                                setTicketDrafts((previous) =>
+                                  previous.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? {
+                                          ...item,
+                                          price: inputEvent.target.value,
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
+                            />
+                          </label>
+                          <label>
+                            Total capacity
+                            <input
+                              type="number"
+                              min={tier.sold}
+                              value={tier.totalSlots}
+                              onChange={(inputEvent) =>
+                                setTicketDrafts((previous) =>
+                                  previous.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? {
+                                          ...item,
+                                          totalSlots: inputEvent.target.value,
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
+                            />
+                            <span className="mt-1 block text-muted-foreground">
+                              {tier.sold.toLocaleString()} sold
+                            </span>
+                          </label>
+                        </div>
+                        <label className="block">
+                          Ticket privileges
+                          <textarea
+                            rows={3}
+                            maxLength={20000}
+                            value={tier.description}
                             onChange={(inputEvent) =>
                               setTicketDrafts((previous) =>
                                 previous.map((item, itemIndex) =>
                                   itemIndex === index
-                                    ? { ...item, price: inputEvent.target.value }
+                                    ? {
+                                        ...item,
+                                        description: inputEvent.target.value,
+                                      }
                                     : item
                                 )
                               )
                             }
-                            className="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
+                            className="mt-1 w-full resize-y rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
                           />
-                        </label>
-                        <label>
-                          Total capacity
-                          <input
-                            type="number"
-                            min={tier.sold}
-                            value={tier.totalSlots}
-                            onChange={(inputEvent) =>
-                              setTicketDrafts((previous) =>
-                                previous.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, totalSlots: inputEvent.target.value }
-                                    : item
-                                )
-                              )
-                            }
-                            className="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
-                          />
-                          <span className="mt-1 block text-muted-foreground">
-                            {tier.sold.toLocaleString()} sold
+                          <span className="mt-1 block text-right text-muted-foreground">
+                            {
+                              tier.description
+                                .trim()
+                                .split(/\s+/)
+                                .filter(Boolean).length
+                            }{' '}
+                            / 1000 words
                           </span>
                         </label>
+                        <label className="inline-flex items-center gap-2 font-semibold text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={tier.isActive}
+                            onChange={(inputEvent) =>
+                              setTicketDrafts((previous) =>
+                                previous.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? {
+                                        ...item,
+                                        isActive: inputEvent.target.checked,
+                                      }
+                                    : item
+                                )
+                              )
+                            }
+                          />
+                          Available for purchase
+                        </label>
                       </div>
-                      <label className="block">
-                        Ticket privileges
-                        <textarea
-                          rows={3}
-                          maxLength={20000}
-                          value={tier.description}
-                          onChange={(inputEvent) =>
-                            setTicketDrafts((previous) =>
-                              previous.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, description: inputEvent.target.value }
-                                  : item
-                              )
-                            )
-                          }
-                          className="mt-1 w-full resize-y rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
-                        />
-                        <span className="mt-1 block text-right text-muted-foreground">
-                          {tier.description.trim().split(/\s+/).filter(Boolean).length} / 1000 words
-                        </span>
-                      </label>
-                      <label className="inline-flex items-center gap-2 font-semibold text-foreground">
-                        <input
-                          type="checkbox"
-                          checked={tier.isActive}
-                          onChange={(inputEvent) =>
-                            setTicketDrafts((previous) =>
-                              previous.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, isActive: inputEvent.target.checked }
-                                  : item
-                              )
-                            )
-                          }
-                        />
-                        Available for purchase
-                      </label>
-                    </div>
-                  ) : (
-                    <>
-                      <p>Price: KSH {Number(tier.price || 0).toLocaleString()}</p>
-                      <p>Slots: {Number(tier.totalSlots || 0).toLocaleString()}</p>
-                      <p>Remaining: {Number(tier.remainingSlots || 0).toLocaleString()}</p>
-                      <p className="mt-1 whitespace-pre-line">{tier.description || 'No privileges listed.'}</p>
-                      {tier.isActive === false ? <p className="mt-1 font-semibold text-destructive">Disabled</p> : null}
-                    </>
-                  )}
-                </div>
+                    ) : (
+                      <>
+                        <p>
+                          Price: KSH {Number(tier.price || 0).toLocaleString()}
+                        </p>
+                        <p>
+                          Slots: {Number(tier.totalSlots || 0).toLocaleString()}
+                        </p>
+                        <p>
+                          Remaining:{' '}
+                          {Number(tier.remainingSlots || 0).toLocaleString()}
+                        </p>
+                        <p className="mt-1 whitespace-pre-line">
+                          {tier.description || 'No privileges listed.'}
+                        </p>
+                        {tier.isActive === false ? (
+                          <p className="mt-1 font-semibold text-destructive">
+                            Disabled
+                          </p>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                 )
               )}
             </div>
@@ -265,14 +302,25 @@ export function EventDetailsModal({
             </p>
           )}
           {canEditTicketTiers ? (
-            <button
-              type="button"
-              onClick={() => onSaveTicketTiers?.(event._id, ticketDrafts)}
-              disabled={savingTicketTiers || ticketDrafts.length === 0}
-              className="mt-3 inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {savingTicketTiers ? 'Saving tiers...' : 'Save ticket changes'}
-            </button>
+            <>
+              {ticketTierError ? (
+                <p role="alert" className="mt-3 text-sm text-destructive">
+                  {ticketTierError}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onSaveTicketTiers?.(event._id, ticketDrafts)}
+                disabled={
+                  savingTicketTiers ||
+                  ticketDrafts.length === 0 ||
+                  invalidTicketDrafts
+                }
+                className="mt-3 inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingTicketTiers ? 'Saving tiers...' : 'Save ticket changes'}
+              </button>
+            </>
           ) : null}
         </div>
 
