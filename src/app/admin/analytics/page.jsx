@@ -362,19 +362,29 @@ export default function AdminAnalyticsPage() {
                 </tr>
               ) : (
                 summary.ticketProceedsByEvent.map((row) => (
-                  <tr key={row.id} className="border-b border-border/60 last:border-0">
+                  <tr
+                    key={row.id}
+                    className="border-b border-border/60 last:border-0"
+                  >
                     <td className="px-4 py-3">
                       <p className="font-medium text-foreground">{row.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {row.organizerName || 'Unassigned organizer'}
                       </p>
                     </td>
-                    <td className="px-4 py-3">{formatKsh(row.ticketRevenue)}</td>
                     <td className="px-4 py-3">
-                      {Number(row.tickets || 0).toLocaleString()} / {Number(row.orders || 0).toLocaleString()}
+                      {formatKsh(row.ticketRevenue)}
                     </td>
-                    <td className="px-4 py-3">{formatKsh(row.platformCommission)}</td>
-                    <td className="px-4 py-3">{formatKsh(row.organizerEarnings)}</td>
+                    <td className="px-4 py-3">
+                      {Number(row.tickets || 0).toLocaleString()} /{' '}
+                      {Number(row.orders || 0).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatKsh(row.platformCommission)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatKsh(row.organizerEarnings)}
+                    </td>
                   </tr>
                 ))
               )}

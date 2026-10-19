@@ -276,7 +276,9 @@ export default function AdminOrganizersPage() {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          count === 1 ? { organizerId: targetIds[0] } : { organizerIds: targetIds }
+          count === 1
+            ? { organizerId: targetIds[0] }
+            : { organizerIds: targetIds }
         ),
       });
       const data = await response.json();

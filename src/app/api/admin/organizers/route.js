@@ -349,7 +349,10 @@ export async function DELETE(req) {
     const session = await auth();
     if (session?.user?.role !== 'superadmin') {
       return NextResponse.json(
-        { success: false, message: 'Only the system owner can delete organizers.' },
+        {
+          success: false,
+          message: 'Only the system owner can delete organizers.',
+        },
         { status: 403 }
       );
     }
@@ -363,7 +366,10 @@ export async function DELETE(req) {
       new Set([...(organizerId ? [organizerId] : []), ...organizerIds])
     );
 
-    if (!targetIds.length || targetIds.some((id) => !/^[a-f\d]{24}$/i.test(id))) {
+    if (
+      !targetIds.length ||
+      targetIds.some((id) => !/^[a-f\d]{24}$/i.test(id))
+    ) {
       return NextResponse.json(
         { success: false, message: 'Provide valid organizer account IDs.' },
         { status: 400 }
@@ -376,16 +382,25 @@ export async function DELETE(req) {
       .lean();
     if (!organizers.length) {
       return NextResponse.json(
-        { success: false, message: 'No matching organizer accounts were found.' },
+        {
+          success: false,
+          message: 'No matching organizer accounts were found.',
+        },
         { status: 404 }
       );
     }
 
     const organizerEmails = organizers
-      .map((organizer) => String(organizer.email || '').trim().toLowerCase())
+      .map((organizer) =>
+        String(organizer.email || '')
+          .trim()
+          .toLowerCase()
+      )
       .filter(Boolean);
     await Promise.all([
-      Organizer.deleteMany({ _id: { $in: organizers.map((item) => item._id) } }),
+      Organizer.deleteMany({
+        _id: { $in: organizers.map((item) => item._id) },
+      }),
       User.deleteMany({ email: { $in: organizerEmails }, role: 'organizer' }),
     ]);
 

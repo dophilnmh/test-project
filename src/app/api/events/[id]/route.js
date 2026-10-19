@@ -507,7 +507,10 @@ export async function PATCH(req, context) {
       }
       if (existing.eventType === 'competition') {
         return NextResponse.json(
-          { success: false, message: 'Competition events do not have ticket tiers.' },
+          {
+            success: false,
+            message: 'Competition events do not have ticket tiers.',
+          },
           { status: 400 }
         );
       }
