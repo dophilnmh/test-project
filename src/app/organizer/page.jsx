@@ -80,6 +80,7 @@ function emptyOrganizerPollForm() {
   return {
     title: '',
     description: '',
+    bannerUrl: '',
     startDateTime: '',
     endDateTime: '',
     nominees: [emptyPollNominee(), emptyPollNominee()],
@@ -167,6 +168,9 @@ export default function OrganizerDashboardPage() {
   const [organizerTicketSales, setOrganizerTicketSales] = useState([]);
   const [loadingOrganizerPolls, setLoadingOrganizerPolls] = useState(false);
   const [creatingOrganizerPoll, setCreatingOrganizerPoll] = useState(false);
+  const [uploadingPollBanner, setUploadingPollBanner] = useState(false);
+  const [uploadingPollNomineeIndex, setUploadingPollNomineeIndex] =
+    useState(-1);
   const [editingOrganizerPollId, setEditingOrganizerPollId] = useState('');
   const [organizerPollMessage, setOrganizerPollMessage] = useState('');
   const [organizerPollCopyToast, setOrganizerPollCopyToast] = useState('');
@@ -437,6 +441,7 @@ export default function OrganizerDashboardPage() {
             eventId: selectedEventId,
             title: organizerPollForm.title,
             description: organizerPollForm.description,
+            bannerUrl: organizerPollForm.bannerUrl,
             category: activeEvent?.title || 'General',
             startDateTime: organizerPollForm.startDateTime,
             endDateTime: organizerPollForm.endDateTime,
@@ -478,6 +483,7 @@ export default function OrganizerDashboardPage() {
     setOrganizerPollForm({
       title: poll.title || '',
       description: poll.description || '',
+      bannerUrl: poll.bannerUrl || '',
       startDateTime: toLocalDateTime(poll.startDateTime),
       endDateTime: toLocalDateTime(poll.endDateTime),
       nominees:
@@ -494,6 +500,54 @@ export default function OrganizerDashboardPage() {
     setOrganizerPollMessage(
       'Editing poll. Saving will resubmit it for approval.'
     );
+  };
+
+  const uploadOrganizerPollImage = async (file, type, nomineeIndex = -1) => {
+    if (!file) return false;
+    const isBanner = type === 'banner';
+    if (isBanner) setUploadingPollBanner(true);
+    else setUploadingPollNomineeIndex(nomineeIndex);
+    setOrganizerPollMessage('');
+
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch(
+        isBanner ? '/api/uploads/banner' : '/api/uploads/contestant',
+        { method: 'POST', body }
+      );
+      const data = await response.json();
+      const imageUrl = isBanner ? data?.bannerUrl : data?.imageUrl;
+      if (!response.ok || !data?.success || !imageUrl) {
+        setOrganizerPollMessage(
+          data?.message || `Unable to upload poll ${isBanner ? 'banner' : 'photo'}.`
+        );
+        return false;
+      }
+
+      if (isBanner) {
+        setOrganizerPollForm((previous) => ({ ...previous, bannerUrl: imageUrl }));
+      } else {
+        setOrganizerPollForm((previous) => ({
+          ...previous,
+          nominees: previous.nominees.map((nominee, index) =>
+            index === nomineeIndex ? { ...nominee, imageUrl } : nominee
+          ),
+        }));
+      }
+      setOrganizerPollMessage(
+        `Poll ${isBanner ? 'banner' : 'contestant photo'} uploaded.`
+      );
+      return true;
+    } catch {
+      setOrganizerPollMessage(
+        `Unable to upload poll ${isBanner ? 'banner' : 'photo'}.`
+      );
+      return false;
+    } finally {
+      if (isBanner) setUploadingPollBanner(false);
+      else setUploadingPollNomineeIndex(-1);
+    }
   };
 
   const deleteOrganizerPoll = async (pollId) => {
@@ -616,6 +670,23 @@ export default function OrganizerDashboardPage() {
         return b.revenue - a.revenue;
       });
   }, [competitionAnalytics.byContestant]);
+
+  const selectedCompetition = events.find(
+    (event) =>
+      String(event?._id || '') === String(selectedEventId) &&
+      String(event?.eventType || '') === 'competition'
+  );
+  const competitionContestants = selectedCompetition?.competition?.contestants || [];
+
+  const createCompetitionTicketLink = (contestant) => {
+    const referralId = JSON.stringify({
+      type: 'competition',
+      eventId: selectedEventId,
+      fullName: contestant.fullName,
+      category: contestant.category,
+    });
+    return `/events?ref=${encodeURIComponent(referralId)}`;
+  };
 
   const buildContestantRankingPdfBlob = useCallback(() => {
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -1721,6 +1792,85 @@ export default function OrganizerDashboardPage() {
                   </table>
                 )}
               </div>
+
+              {competitionContestants.length > 0 ? (
+                <div className="mt-5 border-t border-border/70 pt-4">
+                  <h4 className="text-sm font-semibold text-foreground">
+                    Contestant ticket links
+                  </h4>
+                  <div className="mt-3 space-y-3">
+                    {competitionContestants.map((contestant) => {
+                      const link = createCompetitionTicketLink(contestant);
+                      const sales = organizerTicketSales.filter(
+                        (sale) =>
+                          sale.sourceCompetitionEventId ===
+                            String(selectedEventId) &&
+                          sale.contestantName === contestant.fullName &&
+                          sale.contestantCategory === contestant.category
+                      );
+                      const sold = sales.reduce(
+                        (sum, sale) => sum + Number(sale.tickets || 0),
+                        0
+                      );
+                      const revenue = sales.reduce(
+                        (sum, sale) => sum + Number(sale.revenue || 0),
+                        0
+                      );
+
+                      return (
+                        <div
+                          key={`${contestant.fullName}-${contestant.category}`}
+                          className="rounded-lg border border-border/70 bg-background/40 p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-semibold text-foreground">
+                              {contestant.fullName}{' '}
+                              <span className="font-normal text-muted-foreground">
+                                · {contestant.category}
+                              </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {sold.toLocaleString()} tickets · {formatKsh(revenue)}
+                            </p>
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <Link
+                              href={link}
+                              target="_blank"
+                              className="min-w-0 flex-1 truncate text-xs text-primary underline underline-offset-2"
+                            >
+                              {link}
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => copyOrganizerPollLink(link)}
+                              aria-label={`Copy ticket link for ${contestant.fullName}`}
+                              title="Copy contestant ticket link"
+                              className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                          </div>
+                          {sales.length > 0 ? (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {sales
+                                .map(
+                                  (sale) =>
+                                          `${sale.ticketEventTitle ? `${sale.ticketEventTitle} · ` : ''}${sale.tierName}: ${Number(sale.tickets || 0)} sold (${formatKsh(sale.revenue)})`
+                                )
+                                .join(' · ')}
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              No paid ticket sales yet.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </article>
 
             <article className="rounded-2xl border border-border bg-linear-to-br from-card via-card/95 to-background p-5">
@@ -1953,6 +2103,31 @@ export default function OrganizerDashboardPage() {
                   placeholder="Short poll description"
                   className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 />
+                <div className="md:col-span-2">
+                  <ImageCropUploadField
+                    label="Poll banner"
+                    helperText={
+                      uploadingPollBanner
+                        ? 'Uploading banner...'
+                        : 'Upload and crop a banner for this poll.'
+                    }
+                    disabled={uploadingPollBanner || creatingOrganizerPoll}
+                    aspectRatio={16 / 9}
+                    onCroppedFile={(file) =>
+                      uploadOrganizerPollImage(file, 'banner')
+                    }
+                  />
+                  {organizerPollForm.bannerUrl ? (
+                    <Image
+                      src={organizerPollForm.bannerUrl}
+                      alt="Poll banner preview"
+                      width={640}
+                      height={180}
+                      unoptimized
+                      className="mt-2 h-28 w-full rounded-md border border-border object-cover"
+                    />
+                  ) : null}
+                </div>
                 <label className="text-xs font-semibold text-muted-foreground">
                   Starts
                   <input
@@ -2043,7 +2218,7 @@ export default function OrganizerDashboardPage() {
                       placeholder="Category"
                       className="rounded-md border border-input bg-background px-2.5 py-2 text-sm"
                     />
-                    <div className="flex gap-2">
+                    <div className="space-y-2">
                       <input
                         value={nominee.imageUrl}
                         onChange={(event) =>
@@ -2060,6 +2235,34 @@ export default function OrganizerDashboardPage() {
                         placeholder="Photo URL (optional)"
                         className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-2 text-sm"
                       />
+                      <ImageCropUploadField
+                        label="Contestant photo"
+                        helperText={
+                          uploadingPollNomineeIndex === index
+                            ? 'Uploading photo...'
+                            : 'Upload and crop a contestant photo.'
+                        }
+                        disabled={
+                          uploadingPollNomineeIndex !== -1 ||
+                          creatingOrganizerPoll
+                        }
+                        aspectRatio={1}
+                        onCroppedFile={(file) =>
+                          uploadOrganizerPollImage(file, 'nominee', index)
+                        }
+                      />
+                      {nominee.imageUrl ? (
+                        <Image
+                          src={nominee.imageUrl}
+                          alt={`${nominee.name || 'Contestant'} photo preview`}
+                          width={64}
+                          height={64}
+                          unoptimized
+                          className="h-16 w-16 rounded-md border border-border object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="flex justify-end">
                       <button
                         type="button"
                         disabled={organizerPollForm.nominees.length <= 2}
@@ -2126,6 +2329,7 @@ export default function OrganizerDashboardPage() {
               <div className="space-y-3">
                 {organizerPolls.map((poll) => {
                   const pollPath = `/voting/${poll._id}`;
+                  const registrationPath = `/voting/${poll._id}/register`;
                   const nominees = poll.contestants || poll.nominees || [];
                   const canDeletePoll = [
                     'draft',
@@ -2147,6 +2351,9 @@ export default function OrganizerDashboardPage() {
                           </p>
                         </div>
                         <div className="flex min-w-0 items-center gap-2">
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            Public voting link
+                          </span>
                           <button
                             type="button"
                             onClick={() => editOrganizerPoll(poll)}
@@ -2177,13 +2384,34 @@ export default function OrganizerDashboardPage() {
                           <button
                             type="button"
                             onClick={() => copyOrganizerPollLink(pollPath)}
-                            aria-label="Copy general poll link"
-                            title="Copy poll link"
+                            aria-label="Copy public voting link"
+                            title="Copy public voting link"
                             className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                           >
                             <Copy className="h-4 w-4" />
                           </button>
                         </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
+                        <span className="shrink-0 text-xs font-semibold text-muted-foreground">
+                          General poll link
+                        </span>
+                        <Link
+                          href={registrationPath}
+                          target="_blank"
+                          className="min-w-0 flex-1 truncate text-xs text-primary underline underline-offset-2"
+                        >
+                          {registrationPath}
+                        </Link>
+                        <button
+                          type="button"
+                          aria-label="Copy general poll registration link"
+                          title="Copy general poll link"
+                          onClick={() => copyOrganizerPollLink(registrationPath)}
+                          className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
                       </div>
                       {nominees.length > 0 ? (
                         <ul className="mt-3 divide-y divide-border/60">
@@ -2259,7 +2487,7 @@ export default function OrganizerDashboardPage() {
                                     {contestantSales
                                       .map(
                                         (sale) =>
-                                          `${sale.tierName}: ${Number(sale.tickets || 0)} sold (${formatKsh(sale.revenue)})`
+                                          `${sale.ticketEventTitle ? `${sale.ticketEventTitle} · ` : ''}${sale.tierName}: ${Number(sale.tickets || 0)} sold (${formatKsh(sale.revenue)})`
                                       )
                                       .join(' · ')}
                                   </div>

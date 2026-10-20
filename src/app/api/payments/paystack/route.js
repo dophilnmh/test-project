@@ -48,7 +48,8 @@ export async function POST(request) {
       .toLowerCase();
     const phone = String(body.phone || '').trim();
 
-    if (!isValidEmail(email) || (phone && phone.length < 7)) {
+    const isCompetitionVote = paymentType === 'competition_vote';
+    if ((!isCompetitionVote && !isValidEmail(email)) || (phone && phone.length < 7)) {
       return NextResponse.json(
         { success: false, message: 'Enter a valid email and phone number.' },
         { status: 400 }
@@ -136,6 +137,7 @@ export async function POST(request) {
       const commissionPercent = Number(
         event.commercialTerms?.votingCommissionPercent ?? 20
       );
+      const paystackEmail = `vote-${randomUUID()}@example.com`;
       const reference = `NIMBLY-${randomUUID()}`;
       const transaction = await CompetitionVoteTransaction.create({
         eventId: event._id,
@@ -145,7 +147,7 @@ export async function POST(request) {
         contestantCategory: contestant.category,
         packageId: String(votePackage._id || ''),
         packageName: votePackage.name,
-        voterEmail: email,
+        voterEmail: '',
         voterPhone: phone || 'CARD',
         votes: requestedVotes,
         unitPrice: Math.round(totalAmount / requestedVotes),
@@ -177,7 +179,7 @@ export async function POST(request) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            email,
+            email: paystackEmail,
             amount: totalAmount * 100,
             currency: 'KES',
             channels: ['card'],
@@ -476,9 +478,13 @@ export async function POST(request) {
       customerPhone: phone,
       customerEmail: email,
       referralCampaignId: referralResult.referral?.referralCampaignId || null,
+      referralCompetitionEventId:
+        referralResult.referral?.referralCompetitionEventId || null,
       referralContestantId: referralResult.referral?.referralContestantId || '',
       referralContestantName:
         referralResult.referral?.referralContestantName || '',
+      referralContestantCategory:
+        referralResult.referral?.referralContestantCategory || '',
       ticketCode,
       entryCode,
       status: 'pending',

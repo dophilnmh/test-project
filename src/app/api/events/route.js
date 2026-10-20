@@ -8,6 +8,7 @@ import { auth } from '@/app/auth';
 import { sendMailSafe } from '@/lib/mailer';
 import { sendSmsSafe } from '@/lib/sms';
 import { normalizeCompetitionCategories } from '@/lib/competitionCategories';
+import { parseCompetitionTicketReferral } from '@/lib/ticketReferral';
 
 function slugTierName(name) {
   return String(name || '')
@@ -193,6 +194,7 @@ export async function GET(req) {
     );
     const q = String(searchParams.get('q') || '').trim();
     const includeAllEventTypes = scope === 'all';
+    const referralId = String(searchParams.get('ref') || '').trim();
 
     const session = scope === 'admin' ? await auth() : null;
     if (scope === 'admin') {
@@ -214,7 +216,7 @@ export async function GET(req) {
       }
     }
 
-    const filter =
+    let filter =
       scope === 'admin'
         ? {}
         : scope === 'landing'
@@ -228,6 +230,41 @@ export async function GET(req) {
                   { eventType: { $exists: false } },
                 ],
               };
+
+      if (referralId) {
+        const referral = parseCompetitionTicketReferral(referralId);
+        if (!referral) {
+          return NextResponse.json(
+            { success: false, message: 'Invalid contestant ticket link.' },
+            { status: 400 }
+          );
+        }
+        const sourceEvent = await Event.findOne({
+          _id: referral.eventId,
+          status: 'approved',
+          eventType: 'competition',
+        })
+          .select('organizerId competition.contestants')
+          .lean();
+        const contestant = (sourceEvent?.competition?.contestants || []).find(
+          (item) =>
+            String(item.fullName || '').trim().toLowerCase() ===
+              referral.fullName.toLowerCase() &&
+            String(item.category || '').trim().toLowerCase() ===
+              referral.category.toLowerCase()
+        );
+        if (!sourceEvent || !contestant) {
+          return NextResponse.json(
+            { success: false, message: 'This contestant ticket link is no longer available.' },
+            { status: 404 }
+          );
+        }
+        filter = {
+          status: 'approved',
+          eventType: 'ticketing',
+          organizerId: sourceEvent.organizerId,
+        };
+      }
 
     if (scope !== 'admin' && q) {
       filter.$and = [

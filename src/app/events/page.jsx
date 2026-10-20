@@ -25,9 +25,12 @@ import { MpesaCheckoutButton } from '@/components/payments/MpesaCheckoutButton';
 import Image from 'next/image';
 
 const formatTicketName = (name) =>
-  String(name || '')
+  (() => {
+    const title = String(name || '')
     .toLowerCase()
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+    return /\sTicket$/i.test(title) ? title : `${title} Ticket`;
+  })();
 
 const getEventStatus = (event, nowMs) => {
   const startDateTime = event.startDateTime || event.date;
@@ -78,25 +81,28 @@ function PublicEventsPageInner() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [ticketQuantitySelection, setTicketQuantitySelection] = useState({});
 
-  const fetchEvents = async () => {
-    setLoading(true);
+  const fetchEvents = useCallback(async (preserveSelections = false) => {
+    if (!preserveSelections) setLoading(true);
     try {
-      const response = await fetch('/api/events', { cache: 'no-store' });
+      const referralId = String(searchParams.get('ref') || '').trim();
+      const endpoint = referralId
+        ? `/api/events?ref=${encodeURIComponent(referralId)}`
+        : '/api/events';
+      const response = await fetch(endpoint, { cache: 'no-store' });
       const data = await response.json();
       if (response.ok && data?.success) {
         setEvents(data.events || []);
-
-        setTicketQuantitySelection({});
+        if (!preserveSelections) setTicketQuantitySelection({});
       }
     } finally {
-      setLoading(false);
+      if (!preserveSelections) setLoading(false);
     }
-  };
-
+  }, [searchParams]);
   useEffect(() => {
     fetchEvents();
-  }, []);
-
+    const availabilityTimer = setInterval(() => fetchEvents(true), 5000);
+    return () => clearInterval(availabilityTimer);
+  }, [fetchEvents]);
   useEffect(() => {
     const targetEventId = String(searchParams.get('eventId') || '').trim();
     if (!targetEventId) return;
@@ -486,7 +492,7 @@ function PublicEventsPageInner() {
                                   <h3 className="font-semibold">
                                     {ticketName}
                                   </h3>
-                                  <p className="mt-1 line-clamp-2 text-xs opacity-75">
+                                  <p className="mt-1 whitespace-pre-line text-xs opacity-75">
                                     {tier.description || event.description}
                                   </p>
                                 </div>
@@ -547,6 +553,8 @@ function PublicEventsPageInner() {
                                     tierName={tier.name}
                                     quantity={quantity}
                                     maxQuantity={tier.remainingSlots}
+                                    referrerId={searchParams.get('ref') || ''}
+                                    onPaymentSuccess={() => fetchEvents(true)}
                                     buttonLabel="Purchase"
                                     className="inline-flex items-center rounded-md bg-[#2CE5D8] px-3 py-2 text-sm font-bold text-[#0A0E27] transition hover:bg-[#9af5ee]"
                                   />

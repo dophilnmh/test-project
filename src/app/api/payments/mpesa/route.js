@@ -686,8 +686,12 @@ export async function POST(req) {
           customerPhone: phone,
           customerEmail: meta.customerEmail || '',
           referralCampaignId: meta.referralCampaignId || null,
+          referralCompetitionEventId:
+            meta.referralCompetitionEventId || null,
           referralContestantId: meta.referralContestantId || '',
           referralContestantName: meta.referralContestantName || '',
+          referralContestantCategory:
+            meta.referralContestantCategory || '',
           status: 'paid',
           merchantRequestId: `MOCK-${Date.now()}`,
           checkoutRequestId: mockCheckoutRequestId,
@@ -980,8 +984,12 @@ export async function POST(req) {
         customerPhone: phone,
         customerEmail: meta.customerEmail || '',
         referralCampaignId: meta.referralCampaignId || null,
+        referralCompetitionEventId:
+          meta.referralCompetitionEventId || null,
         referralContestantId: meta.referralContestantId || '',
         referralContestantName: meta.referralContestantName || '',
+        referralContestantCategory:
+          meta.referralContestantCategory || '',
         status: 'pending',
         merchantRequestId,
         checkoutRequestId,

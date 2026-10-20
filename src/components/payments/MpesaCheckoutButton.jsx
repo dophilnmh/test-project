@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CreditCard, Loader2, Smartphone, X } from 'lucide-react';
+import Image from 'next/image';
+import { Loader2, X } from 'lucide-react';
 import { formatKsh } from '@/lib/currency';
 
 const TICKET_MODAL_PRESETS = [1, 2, 3, 5];
@@ -45,6 +46,7 @@ export function MpesaCheckoutButton({
     Math.max(1, Math.round(Number(quantity || 1)))
   );
   const pollRef = useRef(null);
+  const pollDelayRef = useRef(null);
   const closeTimerRef = useRef(null);
   const normalizedPaymentType =
     paymentType === 'campaign_vote' || paymentType === 'voting'
@@ -110,6 +112,10 @@ export function MpesaCheckoutButton({
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    if (pollDelayRef.current) {
+      clearTimeout(pollDelayRef.current);
+      pollDelayRef.current = null;
+    }
   };
 
   const stopCloseTimer = () => {
@@ -164,8 +170,18 @@ export function MpesaCheckoutButton({
       }
     } catch {
       setError('Unable to check payment status right now.');
-      stopPolling();
     }
+  };
+
+  const startStatusPolling = (requestId) => {
+    stopPolling();
+    const poll = () => fetchStatus(requestId);
+    pollRef.current = setInterval(poll, 3000);
+    pollDelayRef.current = setTimeout(() => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(poll, 15000);
+      pollDelayRef.current = null;
+    }, 120000);
   };
 
   useEffect(() => {
@@ -244,7 +260,7 @@ export function MpesaCheckoutButton({
             ? effectiveVoteCount
             : Math.max(1, Math.round(Number(requestedVotes || 0))),
           phone,
-          email,
+          email: isTicketPurchase ? email : '',
           contestantId,
           contestantKey: contestantId,
           packageId,
@@ -272,17 +288,8 @@ export function MpesaCheckoutButton({
       );
 
       if (data.checkoutRequestId) {
+        if (!data.mock) startStatusPolling(data.checkoutRequestId);
         await fetchStatus(data.checkoutRequestId);
-
-        if (!data.mock) {
-          pollRef.current = setInterval(() => {
-            fetchStatus(data.checkoutRequestId);
-          }, 3000);
-
-          setTimeout(() => {
-            stopPolling();
-          }, 120000);
-        }
       }
     } catch {
       setError(
@@ -299,7 +306,7 @@ export function MpesaCheckoutButton({
     setFeedback('');
 
     if (!isTicketPurchase && !isVotePurchase && !isMerchPurchase) return;
-    if (!isValidEmail(email)) {
+    if ((isTicketPurchase || isMerchPurchase) && !isValidEmail(email)) {
       setError('Please enter a valid email address for your payment receipt.');
       return;
     }
@@ -315,7 +322,7 @@ export function MpesaCheckoutButton({
           eventTitle,
           tierName,
           quantity: effectiveQuantity,
-          email,
+          ...(!isVotePurchase ? { email } : {}),
           phone,
           referrerId,
           contestantId,
@@ -336,6 +343,8 @@ export function MpesaCheckoutButton({
       }
 
       setCheckoutRequestId(data.reference || '');
+      setPaymentStatus('pending');
+      setStatusNote('Payment submitted. Confirming with Paystack...');
       const { default: PaystackPop } = await import('@paystack/inline-js');
       const paystack = new PaystackPop();
       paystack.resumeTransaction(data.accessCode, {
@@ -348,7 +357,9 @@ export function MpesaCheckoutButton({
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reference: transaction.reference }),
+                body: JSON.stringify({
+                  reference: transaction?.reference || data.reference,
+                }),
               }
             );
             const verification = await readJsonSafely(verifyResponse);
@@ -417,7 +428,6 @@ export function MpesaCheckoutButton({
         }
         onClick={() => setOpen(true)}
       >
-        <Smartphone className="mr-1.5 h-4 w-4" />
         {ctaLabel}
       </button>
 
@@ -466,7 +476,14 @@ export function MpesaCheckoutButton({
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <Smartphone className="h-4 w-4" />
+                  <Image
+                    src="/assets/mpesalogo.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={28}
+                    height={28}
+                    className="h-7 w-7 rounded-full object-contain"
+                  />
                   M-PESA
                 </button>
                 <button
@@ -480,7 +497,14 @@ export function MpesaCheckoutButton({
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <CreditCard className="h-4 w-4" />
+                  <Image
+                    src="/assets/debitcard.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={40}
+                    height={24}
+                    className="h-6 w-10 rounded-sm object-contain"
+                  />
                   CARD
                 </button>
               </div>
@@ -623,19 +647,21 @@ export function MpesaCheckoutButton({
                 />
               </label>
 
-              <label className="block text-sm text-muted-foreground">
-                {isTicketPurchase
-                  ? 'Email for ticket delivery'
-                  : 'Email for receipt'}
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required={isTicketPurchase || paymentMethod === 'card'}
-                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
-                />
-              </label>
+              {!isVotePurchase ? (
+                <label className="block text-sm text-muted-foreground">
+                  {isTicketPurchase
+                    ? 'Email for ticket delivery'
+                    : 'Email for receipt'}
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required={isTicketPurchase || paymentMethod === 'card'}
+                    className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+              ) : null}
 
               {error ? (
                 <p className="text-sm text-destructive">{error}</p>
@@ -671,7 +697,8 @@ export function MpesaCheckoutButton({
                 type="submit"
                 disabled={
                   loading ||
-                  ((isTicketPurchase || paymentMethod === 'card') &&
+                  ((isTicketPurchase ||
+                    (isMerchPurchase && paymentMethod === 'card')) &&
                     !isValidEmail(email))
                 }
                 className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"

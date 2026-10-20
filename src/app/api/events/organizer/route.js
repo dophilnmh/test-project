@@ -153,11 +153,27 @@ export async function GET(req) {
       ...(useScopedEventFilter ? { eventId: { $in: scopedEventIds } } : {}),
     };
 
-    const [paidOrders, paidCompetitionTransactions, fundRequests] =
+    const [paidOrders, referralOrders, paidCompetitionTransactions, fundRequests] =
       await Promise.all([
         useScopedEventFilter && scopedEventIds.length === 0
           ? []
           : TicketOrder.find(ticketFilter).lean().maxTimeMS(15000),
+        useScopedEventFilter && scopedEventIds.length === 0
+          ? []
+          : TicketOrder.find({
+              organizerId: organizer._id,
+              status: 'paid',
+              ...(useScopedEventFilter
+                ? {
+                    $or: [
+                      { eventId: { $in: scopedEventIds } },
+                      { referralCompetitionEventId: { $in: scopedEventIds } },
+                    ],
+                  }
+                : {}),
+            })
+              .lean()
+              .maxTimeMS(15000),
         useScopedEventFilter && scopedEventIds.length === 0
           ? []
           : CompetitionVoteTransaction.find(competitionFilter)
@@ -180,16 +196,22 @@ export async function GET(req) {
     );
 
     const referralSalesMap = new Map();
-    for (const order of paidOrders) {
+    for (const order of referralOrders) {
       const contestantId = String(order.referralContestantId || '').trim();
       if (!contestantId) continue;
       const eventId = String(order.eventId || '');
+      const sourceCompetitionEventId = String(
+        order.referralCompetitionEventId || ''
+      );
       const tierName = String(order.tierName || 'Ticket').trim() || 'Ticket';
-      const key = `${eventId}::${contestantId}::${tierName}`;
+      const key = `${eventId}::${sourceCompetitionEventId}::${contestantId}::${tierName}`;
       const current = referralSalesMap.get(key) || {
         eventId,
+        ticketEventTitle: String(order.eventTitle || '').trim(),
+        sourceCompetitionEventId,
         contestantId,
         contestantName: String(order.referralContestantName || '').trim(),
+        contestantCategory: String(order.referralContestantCategory || '').trim(),
         tierName,
         tickets: 0,
         orders: 0,

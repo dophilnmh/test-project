@@ -25,8 +25,15 @@ const ticketOrderSchema = new Schema(
       default: null,
       index: true,
     },
+    referralCompetitionEventId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Event',
+      default: null,
+      index: true,
+    },
     referralContestantId: { type: String, default: '', index: true },
     referralContestantName: { type: String, default: '', index: true },
+    referralContestantCategory: { type: String, default: '', index: true },
     tierName: {
       type: String,
       required: true,

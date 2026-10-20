@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { CalendarDays, Clock3, MapPin } from 'lucide-react';
 import { MpesaCheckoutButton } from '@/components/payments/MpesaCheckoutButton';
@@ -9,9 +9,12 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { formatKsh } from '@/lib/currency';
 
 const formatTicketName = (name) =>
-  String(name || '')
+  (() => {
+    const title = String(name || '')
     .toLowerCase()
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+    return /\sTicket$/i.test(title) ? title : `${title} Ticket`;
+  })();
 
 export default function EventTicketPage() {
   const { id } = useParams();
@@ -20,8 +23,8 @@ export default function EventTicketPage() {
   const [loading, setLoading] = useState(true);
   const [ticketQuantities, setTicketQuantities] = useState({});
 
-  useEffect(() => {
-    const loadEvent = async () => {
+  const loadEvent = useCallback(async (initializeQuantities = false) => {
+    try {
       const response = await fetch(
         `/api/events/${encodeURIComponent(String(id || ''))}`,
         { cache: 'no-store' }
@@ -29,30 +32,39 @@ export default function EventTicketPage() {
       const data = await response.json();
       if (response.ok && data?.success) {
         setEvent(data.event);
-        const requestedTier = searchParams.get('tier');
-        const availableTier = (data.event?.tiers || []).find(
-          (item) => item.name === requestedTier
-        );
-        const requestedQuantity = Number(searchParams.get('quantity'));
-        const initialQuantities = {};
-        for (const tier of data.event?.tiers || []) {
-          const tierQuantity =
-            tier.name === availableTier?.name &&
-            Number.isFinite(requestedQuantity) &&
-            requestedQuantity > 0
-              ? Math.round(requestedQuantity)
-              : 1;
-          initialQuantities[tier.name] = Math.min(
-            Math.max(1, Number(tier.remainingSlots || 0)),
-            Math.max(1, tierQuantity)
+        if (initializeQuantities) {
+          const requestedTier = searchParams.get('tier');
+          const availableTier = (data.event?.tiers || []).find(
+            (item) => item.name === requestedTier
           );
+          const requestedQuantity = Number(searchParams.get('quantity'));
+          const initialQuantities = {};
+          for (const tier of data.event?.tiers || []) {
+            const tierQuantity =
+              tier.name === availableTier?.name &&
+              Number.isFinite(requestedQuantity) &&
+              requestedQuantity > 0
+                ? Math.round(requestedQuantity)
+                : 1;
+            initialQuantities[tier.name] = Math.min(
+              Math.max(1, Number(tier.remainingSlots || 0)),
+              Math.max(1, tierQuantity)
+            );
+          }
+          setTicketQuantities(initialQuantities);
         }
-        setTicketQuantities(initialQuantities);
       }
+    } finally {
       setLoading(false);
-    };
-    if (id) loadEvent();
+    }
   }, [id, searchParams]);
+
+  useEffect(() => {
+    if (!id) return;
+    loadEvent(true);
+    const availabilityTimer = setInterval(() => loadEvent(), 5000);
+    return () => clearInterval(availabilityTimer);
+  }, [id, loadEvent]);
 
   return (
     <Layout>
@@ -188,6 +200,7 @@ export default function EventTicketPage() {
                             quantity={selectedQuantity}
                             maxQuantity={ticketTier.remainingSlots}
                             referrerId={searchParams.get('ref') || ''}
+                            onPaymentSuccess={() => loadEvent()}
                             buttonLabel="Purchase"
                             className="inline-flex items-center rounded-md bg-[#2CE5D8] px-3 py-2 text-sm font-bold text-[#0A0E27] transition hover:bg-[#9af5ee]"
                           />
