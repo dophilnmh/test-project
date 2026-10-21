@@ -520,13 +520,17 @@ export default function OrganizerDashboardPage() {
       const imageUrl = isBanner ? data?.bannerUrl : data?.imageUrl;
       if (!response.ok || !data?.success || !imageUrl) {
         setOrganizerPollMessage(
-          data?.message || `Unable to upload poll ${isBanner ? 'banner' : 'photo'}.`
+          data?.message ||
+            `Unable to upload poll ${isBanner ? 'banner' : 'photo'}.`
         );
         return false;
       }
 
       if (isBanner) {
-        setOrganizerPollForm((previous) => ({ ...previous, bannerUrl: imageUrl }));
+        setOrganizerPollForm((previous) => ({
+          ...previous,
+          bannerUrl: imageUrl,
+        }));
       } else {
         setOrganizerPollForm((previous) => ({
           ...previous,
@@ -676,16 +680,23 @@ export default function OrganizerDashboardPage() {
       String(event?._id || '') === String(selectedEventId) &&
       String(event?.eventType || '') === 'competition'
   );
-  const competitionContestants = selectedCompetition?.competition?.contestants || [];
+  const competitionContestants =
+    selectedCompetition?.competition?.contestants || [];
 
   const createCompetitionTicketLink = (contestant) => {
+    const ticketEventId = String(
+      selectedCompetition?.competition?.ticketEventId || ''
+    );
+    if (!ticketEventId) return '';
     const referralId = JSON.stringify({
       type: 'competition',
       eventId: selectedEventId,
       fullName: contestant.fullName,
       category: contestant.category,
     });
-    return `/events?ref=${encodeURIComponent(referralId)}`;
+    return `/events/${encodeURIComponent(ticketEventId)}?${new URLSearchParams(
+      { ref: referralId }
+    ).toString()}`;
   };
 
   const buildContestantRankingPdfBlob = useCallback(() => {
@@ -1830,33 +1841,42 @@ export default function OrganizerDashboardPage() {
                               </span>
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {sold.toLocaleString()} tickets · {formatKsh(revenue)}
+                              {sold.toLocaleString()} tickets ·{' '}
+                              {formatKsh(revenue)}
                             </p>
                           </div>
                           <div className="mt-2 flex items-center gap-2">
-                            <Link
-                              href={link}
-                              target="_blank"
-                              className="min-w-0 flex-1 truncate text-xs text-primary underline underline-offset-2"
-                            >
-                              {link}
-                            </Link>
-                            <button
-                              type="button"
-                              onClick={() => copyOrganizerPollLink(link)}
-                              aria-label={`Copy ticket link for ${contestant.fullName}`}
-                              title="Copy contestant ticket link"
-                              className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </button>
+                            {link ? (
+                              <>
+                                <Link
+                                  href={link}
+                                  target="_blank"
+                                  className="min-w-0 flex-1 truncate text-xs text-primary underline underline-offset-2"
+                                >
+                                  {link}
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => copyOrganizerPollLink(link)}
+                                  aria-label={`Copy ticket link for ${contestant.fullName}`}
+                                  title="Copy contestant ticket link"
+                                  className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                No ticketing event is linked to this competition yet.
+                              </p>
+                            )}
                           </div>
                           {sales.length > 0 ? (
                             <p className="mt-2 text-xs text-muted-foreground">
                               {sales
                                 .map(
                                   (sale) =>
-                                          `${sale.ticketEventTitle ? `${sale.ticketEventTitle} · ` : ''}${sale.tierName}: ${Number(sale.tickets || 0)} sold (${formatKsh(sale.revenue)})`
+                                    `${sale.ticketEventTitle ? `${sale.ticketEventTitle} · ` : ''}${sale.tierName}: ${Number(sale.tickets || 0)} sold (${formatKsh(sale.revenue)})`
                                 )
                                 .join(' · ')}
                             </p>
@@ -2407,7 +2427,9 @@ export default function OrganizerDashboardPage() {
                           type="button"
                           aria-label="Copy general poll registration link"
                           title="Copy general poll link"
-                          onClick={() => copyOrganizerPollLink(registrationPath)}
+                          onClick={() =>
+                            copyOrganizerPollLink(registrationPath)
+                          }
                           className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                         >
                           <Copy className="h-4 w-4" />
@@ -2416,7 +2438,14 @@ export default function OrganizerDashboardPage() {
                       {nominees.length > 0 ? (
                         <ul className="mt-3 divide-y divide-border/60">
                           {nominees.map((nominee) => {
-                            const ticketPath = `/events/${encodeURIComponent(String(poll.eventId || selectedEventId))}?ref=${encodeURIComponent(String(nominee._id || ''))}`;
+                            const ticketEventId = String(
+                              poll.eventId || selectedEventId
+                            );
+                            const ticketPath = ticketEventId
+                              ? `/events/${encodeURIComponent(ticketEventId)}?${new URLSearchParams(
+                                  { ref: String(nominee._id || '') }
+                                ).toString()}`
+                              : '';
                             const contestantPath = `${pollPath}/contestants/${nominee._id}`;
                             const contestantSales = organizerTicketSales.filter(
                               (sale) =>
@@ -2460,24 +2489,32 @@ export default function OrganizerDashboardPage() {
                                   <span className="shrink-0 text-xs text-muted-foreground">
                                     Ticket link
                                   </span>
-                                  <Link
-                                    href={ticketPath}
-                                    target="_blank"
-                                    className="min-w-0 flex-1 truncate text-xs text-primary underline underline-offset-2"
-                                  >
-                                    {ticketPath}
-                                  </Link>
-                                  <button
-                                    type="button"
-                                    aria-label={`Copy ticket sales link for ${nominee.name}`}
-                                    title="Copy contestant ticket link"
-                                    onClick={() =>
-                                      copyOrganizerPollLink(ticketPath)
-                                    }
-                                    className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                                  >
-                                    <Copy className="h-4 w-4" />
-                                  </button>
+                                  {ticketPath ? (
+                                    <>
+                                      <Link
+                                        href={ticketPath}
+                                        target="_blank"
+                                        className="min-w-0 flex-1 truncate text-xs text-primary underline underline-offset-2"
+                                      >
+                                        {ticketPath}
+                                      </Link>
+                                      <button
+                                        type="button"
+                                        aria-label={`Copy ticket sales link for ${nominee.name}`}
+                                        title="Copy contestant ticket link"
+                                        onClick={() =>
+                                          copyOrganizerPollLink(ticketPath)
+                                        }
+                                        className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                      >
+                                        <Copy className="h-4 w-4" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">
+                                      This poll is not linked to a ticketing event.
+                                    </span>
+                                  )}
                                 </div>
                                 {contestantSales.length > 0 ? (
                                   <div className="border-t border-border/50 pt-2 text-xs text-muted-foreground">

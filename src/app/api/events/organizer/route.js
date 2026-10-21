@@ -153,37 +153,41 @@ export async function GET(req) {
       ...(useScopedEventFilter ? { eventId: { $in: scopedEventIds } } : {}),
     };
 
-    const [paidOrders, referralOrders, paidCompetitionTransactions, fundRequests] =
-      await Promise.all([
-        useScopedEventFilter && scopedEventIds.length === 0
-          ? []
-          : TicketOrder.find(ticketFilter).lean().maxTimeMS(15000),
-        useScopedEventFilter && scopedEventIds.length === 0
-          ? []
-          : TicketOrder.find({
-              organizerId: organizer._id,
-              status: 'paid',
-              ...(useScopedEventFilter
-                ? {
-                    $or: [
-                      { eventId: { $in: scopedEventIds } },
-                      { referralCompetitionEventId: { $in: scopedEventIds } },
-                    ],
-                  }
-                : {}),
-            })
-              .lean()
-              .maxTimeMS(15000),
-        useScopedEventFilter && scopedEventIds.length === 0
-          ? []
-          : CompetitionVoteTransaction.find(competitionFilter)
-              .lean()
-              .maxTimeMS(15000),
-        FundRequest.find({ organizerId: organizer._id })
-          .select('amount status')
-          .lean()
-          .maxTimeMS(15000),
-      ]);
+    const [
+      paidOrders,
+      referralOrders,
+      paidCompetitionTransactions,
+      fundRequests,
+    ] = await Promise.all([
+      useScopedEventFilter && scopedEventIds.length === 0
+        ? []
+        : TicketOrder.find(ticketFilter).lean().maxTimeMS(15000),
+      useScopedEventFilter && scopedEventIds.length === 0
+        ? []
+        : TicketOrder.find({
+            organizerId: organizer._id,
+            status: 'paid',
+            ...(useScopedEventFilter
+              ? {
+                  $or: [
+                    { eventId: { $in: scopedEventIds } },
+                    { referralCompetitionEventId: { $in: scopedEventIds } },
+                  ],
+                }
+              : {}),
+          })
+            .lean()
+            .maxTimeMS(15000),
+      useScopedEventFilter && scopedEventIds.length === 0
+        ? []
+        : CompetitionVoteTransaction.find(competitionFilter)
+            .lean()
+            .maxTimeMS(15000),
+      FundRequest.find({ organizerId: organizer._id })
+        .select('amount status')
+        .lean()
+        .maxTimeMS(15000),
+    ]);
 
     const collectedFunds = paidOrders.reduce(
       (sum, order) => sum + Number(order.totalAmount || 0),
@@ -211,7 +215,9 @@ export async function GET(req) {
         sourceCompetitionEventId,
         contestantId,
         contestantName: String(order.referralContestantName || '').trim(),
-        contestantCategory: String(order.referralContestantCategory || '').trim(),
+        contestantCategory: String(
+          order.referralContestantCategory || ''
+        ).trim(),
         tierName,
         tickets: 0,
         orders: 0,

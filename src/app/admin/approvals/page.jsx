@@ -23,6 +23,8 @@ function formatDate(value) {
 
 export default function AdminApprovalsPage() {
   const [events, setEvents] = useState([]);
+  const [ticketEvents, setTicketEvents] = useState([]);
+  const [ticketEventSelections, setTicketEventSelections] = useState({});
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
@@ -35,15 +37,32 @@ export default function AdminApprovalsPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/events/pending', {
-        cache: 'no-store',
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
+      const [pendingResponse, ticketEventsResponse] = await Promise.all([
+        fetch('/api/events/pending', { cache: 'no-store' }),
+        fetch('/api/events?scope=all', { cache: 'no-store' }),
+      ]);
+      const [data, ticketEventsData] = await Promise.all([
+        pendingResponse.json(),
+        ticketEventsResponse.json(),
+      ]);
+      if (!pendingResponse.ok || !data.success) {
         setError(data.message || 'Unable to load pending events');
         return;
       }
       setEvents(data.events || []);
+      if (!ticketEventsResponse.ok || !ticketEventsData.success) {
+        setError(
+          ticketEventsData.message || 'Unable to load approved ticket events.'
+        );
+        return;
+      }
+      setTicketEvents(
+        (ticketEventsData.events || []).filter(
+          (event) =>
+            event.status === 'approved' &&
+            (!event.eventType || event.eventType === 'ticketing')
+        )
+      );
     } catch {
       setError('Request failed. Please try again.');
     } finally {
@@ -55,13 +74,26 @@ export default function AdminApprovalsPage() {
     loadPending();
   }, []);
 
-  const review = async (eventId, action) => {
+  const review = async (eventId, action, selectedTicketEventId) => {
     setFeedback('');
     setError('');
     setActionEventId(eventId);
 
     let rejectionReason = '';
     const draft = commissionDrafts[eventId] || {};
+    const event = events.find((item) => String(item._id) === String(eventId));
+    const ticketEventId =
+      selectedTicketEventId ||
+      ticketEventSelections[eventId] ||
+      String(event?.competition?.ticketEventId || '');
+    if (
+      action === 'approve' &&
+      event?.eventType === 'competition' &&
+      !ticketEventId
+    ) {
+      setError('Select a ticketing event before approving this competition.');
+      return;
+    }
     if (action === 'reject') {
       rejectionReason = window.prompt('Enter rejection reason') || '';
       if (!rejectionReason.trim()) {
@@ -75,7 +107,14 @@ export default function AdminApprovalsPage() {
       const response = await fetch(`/api/events/${eventId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, rejectionReason, ...draft }),
+        body: JSON.stringify({
+          action,
+          rejectionReason,
+          ...draft,
+          ...(action === 'approve' && event?.eventType === 'competition'
+            ? { ticketEventId }
+            : {}),
+        }),
       });
       const data = await response.json();
 
@@ -220,6 +259,42 @@ export default function AdminApprovalsPage() {
                     </label>
                   ))}
                 </div>
+                {event.eventType === 'competition' ? (
+                  <label className="w-full text-xs font-semibold text-foreground">
+                    Ticketing event for contestant links
+                    <select
+                      className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm font-normal"
+                      value={
+                        ticketEventSelections[event._id] ||
+                        String(event.competition?.ticketEventId || '')
+                      }
+                      onChange={(changeEvent) =>
+                        setTicketEventSelections((previous) => ({
+                          ...previous,
+                          [event._id]: changeEvent.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select an approved ticketing event</option>
+                      {ticketEvents
+                        .filter(
+                          (ticketEvent) =>
+                            String(
+                              ticketEvent.organizerId?._id ||
+                                ticketEvent.organizerId
+                            ) ===
+                            String(
+                              event.organizerId?._id || event.organizerId
+                            )
+                        )
+                        .map((ticketEvent) => (
+                          <option key={ticketEvent._id} value={ticketEvent._id}>
+                            {ticketEvent.title}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setSelectedEvent(event)}

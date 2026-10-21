@@ -461,7 +461,8 @@ export default function HomePage() {
               <p className="mt-6 max-w-2xl text-base text-muted-foreground md:text-lg">
                 A modern poll and ticketing ecosystem for voters, attendees,
                 organizers, and operations teams. Discover trending campaigns,
-                purchase quickly, and join verified experiences.
+                purchase quickly with M-Pesa or card, and join verified
+                experiences.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link

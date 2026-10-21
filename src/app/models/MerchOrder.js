@@ -37,6 +37,10 @@ const merchOrderSchema = new Schema(
       index: true,
     },
     paymentReference: { type: String, default: '', index: true },
+    checkoutRequestId: { type: String, default: '', index: true },
+    mpesaReceiptNumber: { type: String, default: '' },
+    resultCode: { type: Number, default: null },
+    resultDesc: { type: String, default: '' },
     paidAt: { type: Date, default: null },
     status: {
       type: String,

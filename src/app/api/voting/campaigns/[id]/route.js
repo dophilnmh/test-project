@@ -138,6 +138,12 @@ export async function PATCH(req, { params }) {
     }
 
     const body = await req.json();
+    if (isOrganizer && body?.ticketEventId !== undefined) {
+      return NextResponse.json(
+        { success: false, message: 'Only admins can link polls to ticket events.' },
+        { status: 403 }
+      );
+    }
     const allowedStatus = ['draft', 'live', 'ended', 'archived', 'pending'];
     const nextStatus = isOrganizer
       ? 'pending'
@@ -200,6 +206,46 @@ export async function PATCH(req, { params }) {
       }
     }
 
+    const requestedTicketEventId = String(body?.ticketEventId || '').trim();
+    const ticketEventId = requestedTicketEventId || String(previousCampaign.eventId || '');
+    if (nextStatus === 'live' && !ticketEventId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Select an approved ticket event before approving this poll.',
+        },
+        { status: 400 }
+      );
+    }
+    if (requestedTicketEventId || nextStatus === 'live') {
+      if (!mongoose.Types.ObjectId.isValid(ticketEventId)) {
+        return NextResponse.json(
+          { success: false, message: 'Select a valid ticketing event.' },
+          { status: 400 }
+        );
+      }
+      const linkedTicketEvent = await Event.findOne({
+        _id: ticketEventId,
+        status: 'approved',
+        ...(previousCampaign.organizerId
+          ? { organizerId: previousCampaign.organizerId }
+          : {}),
+        $or: [{ eventType: 'ticketing' }, { eventType: { $exists: false } }],
+      })
+        .select('_id')
+        .lean();
+      if (!linkedTicketEvent) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Choose an approved ticketing event owned by this poll organizer.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updateData = {
       status: nextStatus,
       approvalStatus:
@@ -217,6 +263,11 @@ export async function PATCH(req, { params }) {
         : undefined,
       publishedAt: nextStatus === 'live' ? new Date() : null,
     };
+    if (requestedTicketEventId) {
+      updateData.eventId = requestedTicketEventId;
+    } else if (nextStatus === 'live') {
+      updateData.eventId = ticketEventId;
+    }
 
     if (body?.title !== undefined) updateData.title = String(body.title).trim();
     if (body?.description !== undefined) {

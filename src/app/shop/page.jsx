@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Layout } from '@/components/layout/Layout';
 import { MpesaCheckoutButton } from '@/components/payments/MpesaCheckoutButton';
 import { formatKsh } from '@/lib/currency';
-import { Package2, ShoppingBag, Truck } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Package2,
+  ShoppingBag,
+  Truck,
+} from 'lucide-react';
 
 export default function ShopPage() {
   const [products, setProducts] = useState([]);
@@ -13,6 +19,10 @@ export default function ShopPage() {
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const [orderState, setOrderState] = useState({});
+  const [imageIndices, setImageIndices] = useState({});
+  const [featuredProductId, setFeaturedProductId] = useState('');
+  const touchStartX = useRef({});
+  const hasScrolledToProduct = useRef(false);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -42,6 +52,25 @@ export default function ShopPage() {
   useEffect(() => {
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    if (!products.length || hasScrolledToProduct.current) return;
+    const productId = new URLSearchParams(window.location.search).get(
+      'productId'
+    );
+    if (!productId || !products.some((product) => product._id === productId)) {
+      return;
+    }
+    setFeaturedProductId(productId);
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`product-${productId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      hasScrolledToProduct.current = true;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [products]);
 
   const totals = useMemo(() => {
     const items = products.length;
@@ -117,30 +146,59 @@ export default function ShopPage() {
             const item = orderState[product._id] || {};
             const quantity = Math.max(1, Number(item.quantity || 1));
             const amount = Number(product.price || 0) * quantity;
+            const images =
+              Array.isArray(product.imageUrls) && product.imageUrls.length
+                ? product.imageUrls
+                : product.imageUrl
+                  ? [product.imageUrl]
+                  : [];
+            const imageIndex = imageIndices[product._id] || 0;
+            const changeImage = (direction) => {
+              setImageIndices((previous) => ({
+                ...previous,
+                [product._id]:
+                  (imageIndex + direction + images.length) % images.length,
+              }));
+            };
 
             return (
               <article
                 key={product._id}
-                className="overflow-hidden rounded-2xl border border-border bg-card/85 shadow-[0_12px_30px_-22px_rgba(59,130,246,.8)]"
+                id={`product-${product._id}`}
+                className={`overflow-hidden rounded-2xl border border-border bg-card/85 shadow-[0_12px_30px_-22px_rgba(59,130,246,.8)] ${
+                  featuredProductId === product._id
+                    ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+                    : ''
+                }`}
               >
-                <div className="relative h-40 bg-[linear-gradient(145deg,rgba(30,64,175,.42),rgba(59,130,246,.08))] p-4">
-                  {Array.isArray(product.imageUrls) && product.imageUrls[0] ? (
+                <div
+                  className="relative h-40 touch-pan-y overflow-hidden bg-[linear-gradient(145deg,rgba(30,64,175,.42),rgba(59,130,246,.08))] p-4"
+                  onTouchStart={(event) => {
+                    touchStartX.current[product._id] =
+                      event.touches[0]?.clientX ?? 0;
+                  }}
+                  onTouchEnd={(event) => {
+                    const startX = touchStartX.current[product._id];
+                    const endX = event.changedTouches[0]?.clientX ?? startX;
+                    const delta = startX - endX;
+                    if (Math.abs(delta) > 40 && images.length > 1) {
+                      changeImage(delta > 0 ? 1 : -1);
+                    }
+                  }}
+                >
+                  {images.map((imageUrl, index) => (
                     <Image
-                      src={product.imageUrls[0]}
-                      alt={product.name}
+                      key={`${imageUrl}-${index}`}
+                      src={imageUrl}
+                      alt={`${product.name} image ${index + 1}`}
                       fill
                       unoptimized
-                      className="object-cover"
+                      aria-hidden={index !== imageIndex}
+                      className={`object-cover transition-opacity duration-500 ${
+                        index === imageIndex ? 'opacity-100' : 'opacity-0'
+                      }`}
                     />
-                  ) : product.imageUrl ? (
-                    <Image
-                      src={product.imageUrl}
-                      alt={product.name}
-                      fill
-                      unoptimized
-                      className="object-cover"
-                    />
-                  ) : null}
+                  ))}
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary">
                       {product.category}
@@ -149,6 +207,45 @@ export default function ShopPage() {
                       {product.status.replace('_', ' ').toUpperCase()}
                     </span>
                   </div>
+                  {images.length > 1 ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Previous product image"
+                        onClick={() => changeImage(-1)}
+                        className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/75"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Next product image"
+                        onClick={() => changeImage(1)}
+                        className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/75"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <div className="absolute bottom-2 left-0 right-0 z-10 flex justify-center gap-1.5">
+                        {images.map((imageUrl, index) => (
+                          <button
+                            key={`${imageUrl}-dot-${index}`}
+                            type="button"
+                            aria-label={`Show product image ${index + 1}`}
+                            aria-current={index === imageIndex}
+                            onClick={() =>
+                              setImageIndices((previous) => ({
+                                ...previous,
+                                [product._id]: index,
+                              }))
+                            }
+                            className={`h-2 w-2 rounded-full ${
+                              index === imageIndex ? 'bg-white' : 'bg-white/50'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="p-5">
@@ -226,6 +323,7 @@ export default function ShopPage() {
                       }
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                       placeholder="Delivery location"
+                      required
                     />
                   </div>
 
@@ -254,7 +352,7 @@ export default function ShopPage() {
                           setFeedback('Merchandise payment confirmed.');
                           loadProducts();
                         }}
-                        buttonLabel="Pay by Card"
+                        buttonLabel="Buy Merchandise"
                       />
                     ) : (
                       <span className="text-sm font-semibold text-muted-foreground">

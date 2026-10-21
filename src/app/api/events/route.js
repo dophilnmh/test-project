@@ -231,40 +231,45 @@ export async function GET(req) {
                 ],
               };
 
-      if (referralId) {
-        const referral = parseCompetitionTicketReferral(referralId);
-        if (!referral) {
-          return NextResponse.json(
-            { success: false, message: 'Invalid contestant ticket link.' },
-            { status: 400 }
-          );
-        }
-        const sourceEvent = await Event.findOne({
-          _id: referral.eventId,
-          status: 'approved',
-          eventType: 'competition',
-        })
-          .select('organizerId competition.contestants')
-          .lean();
-        const contestant = (sourceEvent?.competition?.contestants || []).find(
-          (item) =>
-            String(item.fullName || '').trim().toLowerCase() ===
-              referral.fullName.toLowerCase() &&
-            String(item.category || '').trim().toLowerCase() ===
-              referral.category.toLowerCase()
+    if (referralId) {
+      const referral = parseCompetitionTicketReferral(referralId);
+      if (!referral) {
+        return NextResponse.json(
+          { success: false, message: 'Invalid contestant ticket link.' },
+          { status: 400 }
         );
-        if (!sourceEvent || !contestant) {
-          return NextResponse.json(
-            { success: false, message: 'This contestant ticket link is no longer available.' },
-            { status: 404 }
-          );
-        }
-        filter = {
-          status: 'approved',
-          eventType: 'ticketing',
-          organizerId: sourceEvent.organizerId,
-        };
       }
+      const sourceEvent = await Event.findOne({
+        _id: referral.eventId,
+        status: 'approved',
+        eventType: 'competition',
+      })
+        .select('organizerId competition.contestants')
+        .lean();
+      const contestant = (sourceEvent?.competition?.contestants || []).find(
+        (item) =>
+          String(item.fullName || '')
+            .trim()
+            .toLowerCase() === referral.fullName.toLowerCase() &&
+          String(item.category || '')
+            .trim()
+            .toLowerCase() === referral.category.toLowerCase()
+      );
+      if (!sourceEvent || !contestant) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'This contestant ticket link is no longer available.',
+          },
+          { status: 404 }
+        );
+      }
+      filter = {
+        status: 'approved',
+        eventType: 'ticketing',
+        organizerId: sourceEvent.organizerId,
+      };
+    }
 
     if (scope !== 'admin' && q) {
       filter.$and = [

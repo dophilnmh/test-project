@@ -208,6 +208,7 @@ export async function POST(req) {
         _id: selectedEventId,
         organizerId: organizer._id,
         status: 'approved',
+        $or: [{ eventType: 'ticketing' }, { eventType: { $exists: false } }],
       })
         .select('_id')
         .lean();
@@ -242,6 +243,15 @@ export async function POST(req) {
         : nextStatus === 'archived'
           ? 'rejected'
           : 'pending';
+    if (nextStatus === 'live' && !linkedEvent) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Select an approved ticketing event before publishing this poll.',
+        },
+        { status: 400 }
+      );
+    }
 
     const created = await VotingCampaign.create({
       eventId: linkedEvent?._id || null,

@@ -31,9 +31,7 @@ export function MpesaCheckoutButton({
   buttonLabel,
 }) {
   const [open, setOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState(
-    paymentType === 'merchandise' || paymentType === 'merch' ? 'card' : 'mpesa'
-  );
+  const [paymentMethod, setPaymentMethod] = useState('mpesa');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState(customerEmail || '');
   const [loading, setLoading] = useState(false);
@@ -103,7 +101,9 @@ export function MpesaCheckoutButton({
     normalizedPaymentType === 'vote' ||
     normalizedPaymentType === 'competition_vote'
       ? 'STK request sent. Enter your M-Pesa PIN on your phone to confirm your votes. This can take up to 2 minutes.'
-      : 'STK request sent. Enter your M-Pesa PIN on your phone to confirm your ticket purchase. This can take up to 2 minutes.';
+      : isMerchPurchase
+        ? 'STK request sent. Enter your M-Pesa PIN on your phone to confirm your merchandise purchase. This can take up to 2 minutes.'
+        : 'STK request sent. Enter your M-Pesa PIN on your phone to confirm your ticket purchase. This can take up to 2 minutes.';
   const isValidEmail = (value) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 
@@ -155,6 +155,8 @@ export function MpesaCheckoutButton({
           normalizedPaymentType === 'vote' ||
           normalizedPaymentType === 'competition_vote'
             ? 'Payment received successfully. Votes confirmed.'
+            : isMerchPurchase
+              ? 'Payment received successfully. Merchandise order confirmed.'
             : data?.data?.ticketGenerated
               ? `Payment received successfully. Ticket confirmed and generated. Ticket code: ${data?.data?.ticketCode || '-'}.`
               : 'Payment received successfully. Ticket confirmed. Generating ticket details...';
@@ -240,6 +242,15 @@ export function MpesaCheckoutButton({
       return;
     }
 
+    if (isMerchPurchase && !isValidEmail(email)) {
+      setError('Please enter a valid email address for your payment receipt.');
+      return;
+    }
+    if (isMerchPurchase && !String(deliveryLocation || '').trim()) {
+      setError('Please enter a delivery location before checkout.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -255,12 +266,16 @@ export function MpesaCheckoutButton({
           eventTitle,
           amount: payableAmount,
           tierName,
-          quantity: isTicketPurchase ? effectiveQuantity : 1,
+          quantity:
+            isTicketPurchase || isMerchPurchase ? effectiveQuantity : 1,
           requestedVotes: isVotePurchase
             ? effectiveVoteCount
             : Math.max(1, Math.round(Number(requestedVotes || 0))),
           phone,
-          email: isTicketPurchase ? email : '',
+          email: isTicketPurchase || isMerchPurchase ? email : '',
+          productId,
+          deliveryLocation,
+          notes,
           contestantId,
           contestantKey: contestantId,
           packageId,
@@ -308,6 +323,10 @@ export function MpesaCheckoutButton({
     if (!isTicketPurchase && !isVotePurchase && !isMerchPurchase) return;
     if ((isTicketPurchase || isMerchPurchase) && !isValidEmail(email)) {
       setError('Please enter a valid email address for your payment receipt.');
+      return;
+    }
+    if (isMerchPurchase && !String(deliveryLocation || '').trim()) {
+      setError('Please enter a delivery location before checkout.');
       return;
     }
 
@@ -459,7 +478,7 @@ export function MpesaCheckoutButton({
               </button>
             </div>
 
-            {isTicketPurchase || isVotePurchase ? (
+            {isTicketPurchase || isVotePurchase || isMerchPurchase ? (
               <div
                 className="mb-4 grid grid-cols-2 rounded-lg border border-border p-1"
                 role="tablist"
@@ -519,7 +538,10 @@ export function MpesaCheckoutButton({
               Amount: <strong>{formatKsh(payableAmount)}</strong>
               {isTicketPurchase || isMerchPurchase ? (
                 <span className="ml-2 text-xs text-muted-foreground">
-                  ({effectiveQuantity} ticket{effectiveQuantity > 1 ? 's' : ''}{' '}
+                  ({effectiveQuantity}{' '}
+                  {isMerchPurchase
+                    ? `item${effectiveQuantity > 1 ? 's' : ''}`
+                    : `ticket${effectiveQuantity > 1 ? 's' : ''}`}{' '}
                   x {formatKsh(amount)})
                 </span>
               ) : isVotePurchase ? (
@@ -538,7 +560,7 @@ export function MpesaCheckoutButton({
                   : initiateCheckout
               }
             >
-              {isTicketPurchase ? (
+              {isTicketPurchase || isMerchPurchase ? (
                 <label className="block text-sm text-muted-foreground">
                   {isTicketPurchase ? 'Ticket quantity' : 'Quantity'}
                   <input
@@ -657,7 +679,11 @@ export function MpesaCheckoutButton({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    required={isTicketPurchase || paymentMethod === 'card'}
+                    required={
+                      isTicketPurchase ||
+                      isMerchPurchase ||
+                      paymentMethod === 'card'
+                    }
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
                   />
                 </label>
@@ -697,8 +723,7 @@ export function MpesaCheckoutButton({
                 type="submit"
                 disabled={
                   loading ||
-                  ((isTicketPurchase ||
-                    (isMerchPurchase && paymentMethod === 'card')) &&
+                  ((isTicketPurchase || isMerchPurchase) &&
                     !isValidEmail(email))
                 }
                 className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"

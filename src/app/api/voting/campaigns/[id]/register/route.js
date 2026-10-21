@@ -33,7 +33,10 @@ export async function GET(_, { params }) {
     const campaign = await VotingCampaign.findById(id).lean();
     if (!campaign || !['pending', 'live'].includes(campaign.status)) {
       return NextResponse.json(
-        { success: false, message: 'This poll is not accepting registrations.' },
+        {
+          success: false,
+          message: 'This poll is not accepting registrations.',
+        },
         { status: 404 }
       );
     }
@@ -81,7 +84,10 @@ export async function POST(request, { params }) {
     const campaign = await VotingCampaign.findById(id);
     if (!campaign || !['pending', 'live'].includes(campaign.status)) {
       return NextResponse.json(
-        { success: false, message: 'This poll is not accepting registrations.' },
+        {
+          success: false,
+          message: 'This poll is not accepting registrations.',
+        },
         { status: 404 }
       );
     }
@@ -98,20 +104,29 @@ export async function POST(request, { params }) {
     );
     if (!categoryName) {
       return NextResponse.json(
-        { success: false, message: 'Select one of this poll’s available categories.' },
+        {
+          success: false,
+          message: 'Select one of this poll’s available categories.',
+        },
         { status: 400 }
       );
     }
 
     const duplicate = contestants.some(
       (item) =>
-        String(item?.name || '').trim().toLowerCase() === name.toLowerCase() &&
-        String(item?.category || '').trim().toLowerCase() ===
-          categoryName.toLowerCase()
+        String(item?.name || '')
+          .trim()
+          .toLowerCase() === name.toLowerCase() &&
+        String(item?.category || '')
+          .trim()
+          .toLowerCase() === categoryName.toLowerCase()
     );
     if (duplicate) {
       return NextResponse.json(
-        { success: false, message: 'That name is already registered in this category.' },
+        {
+          success: false,
+          message: 'That name is already registered in this category.',
+        },
         { status: 409 }
       );
     }
@@ -137,7 +152,10 @@ export async function POST(request, { params }) {
     });
   } catch (error) {
     return NextResponse.json(
-      { success: false, message: error.message || 'Unable to submit registration.' },
+      {
+        success: false,
+        message: error.message || 'Unable to submit registration.',
+      },
       { status: 500 }
     );
   }

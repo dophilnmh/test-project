@@ -49,7 +49,10 @@ export async function POST(request) {
     const phone = String(body.phone || '').trim();
 
     const isCompetitionVote = paymentType === 'competition_vote';
-    if ((!isCompetitionVote && !isValidEmail(email)) || (phone && phone.length < 7)) {
+    if (
+      (!isCompetitionVote && !isValidEmail(email)) ||
+      (phone && phone.length < 7)
+    ) {
       return NextResponse.json(
         { success: false, message: 'Enter a valid email and phone number.' },
         { status: 400 }

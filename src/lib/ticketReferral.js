@@ -62,7 +62,9 @@ export async function resolveTicketReferral(eventId, referralId) {
     const [ticketEvent, competitionEvent] = await Promise.all([
       Event.findById(eventId).select('organizerId status eventType').lean(),
       Event.findById(competitionReferral.competitionEventId)
-        .select('organizerId status eventType competition.contestants')
+        .select(
+          'organizerId status eventType competition.ticketEventId competition.contestants'
+        )
         .lean(),
     ]);
     if (
@@ -72,6 +74,8 @@ export async function resolveTicketReferral(eventId, referralId) {
       !competitionEvent ||
       competitionEvent.status !== 'approved' ||
       competitionEvent.eventType !== 'competition' ||
+      String(competitionEvent.competition?.ticketEventId || '') !==
+        String(eventId) ||
       String(ticketEvent.organizerId || '') !==
         String(competitionEvent.organizerId || '')
     ) {
@@ -80,10 +84,12 @@ export async function resolveTicketReferral(eventId, referralId) {
 
     const contestant = (competitionEvent.competition?.contestants || []).find(
       (item) =>
-        String(item.fullName || '').trim().toLowerCase() ===
-          competitionReferral.fullName.toLowerCase() &&
-        String(item.category || '').trim().toLowerCase() ===
-          competitionReferral.category.toLowerCase()
+        String(item.fullName || '')
+          .trim()
+          .toLowerCase() === competitionReferral.fullName.toLowerCase() &&
+        String(item.category || '')
+          .trim()
+          .toLowerCase() === competitionReferral.category.toLowerCase()
     );
     if (contestant) {
       return {

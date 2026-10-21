@@ -5,6 +5,8 @@ import { initCheckoutStatus, setCheckoutStatus } from '@/lib/mpesaStatusStore';
 import connect from '@/app/utils/db';
 import Event from '@/app/models/Event';
 import TicketOrder from '@/app/models/TicketOrder';
+import MerchProduct from '@/app/models/MerchProduct';
+import MerchOrder from '@/app/models/MerchOrder';
 import VotingCampaign from '@/app/models/VotingCampaign';
 import VotingTransaction from '@/app/models/VotingTransaction';
 import CompetitionVoteTransaction from '@/app/models/CompetitionVoteTransaction';
@@ -217,7 +219,28 @@ function calcRequestedVotesAmount(votePackage, requestedVotes) {
   };
 }
 
+async function restoreMerchandiseStock(productId, quantity) {
+  const product = await MerchProduct.findByIdAndUpdate(
+    productId,
+    { $inc: { stock: quantity } },
+    { new: true }
+  );
+  if (product?.status === 'out_of_stock' && product.stock > 0) {
+    product.status = 'active';
+    await product.save();
+  }
+}
+
 export async function POST(req) {
+  let merchReservation = null;
+  const restoreReservation = async () => {
+    if (!merchReservation) return;
+    await restoreMerchandiseStock(
+      merchReservation.productId,
+      merchReservation.quantity
+    );
+    merchReservation = null;
+  };
   try {
     const body = await req.json();
     const rawPaymentType = String(body.paymentType || 'ticket')
@@ -226,7 +249,9 @@ export async function POST(req) {
     const paymentType =
       rawPaymentType === 'campaign_vote' || rawPaymentType === 'voting'
         ? 'vote'
-        : rawPaymentType;
+        : rawPaymentType === 'merch'
+          ? 'merchandise'
+          : rawPaymentType;
     const phone = normalizePhone(body.phone);
     const email = String(body.email || '')
       .trim()
@@ -267,17 +292,103 @@ export async function POST(req) {
       }
     }
 
+    if (paymentType === 'merchandise' || paymentType === 'merch') {
+      if (!emailPattern.test(email)) {
+        return NextResponse.json(
+          { success: false, message: 'Enter a valid email address.' },
+          { status: 400 }
+        );
+      }
+      if (!String(body.deliveryLocation || '').trim()) {
+        return NextResponse.json(
+          { success: false, message: 'Delivery location is required.' },
+          { status: 400 }
+        );
+      }
+    }
+
     await connect();
 
     const superadmin = await User.findOne({ role: 'superadmin' })
-      .select('votingCommissionPercent')
+      .select('votingCommissionPercent merchandiseCommissionPercent')
       .lean();
     const votingCommissionPercent = resolveVotingCommissionPercent(superadmin);
 
     let meta = { paymentType, customerEmail: email };
     let amount = 0;
 
-    if (paymentType === 'vote') {
+    if (paymentType === 'merchandise' || paymentType === 'merch') {
+      const productId = String(body.productId || '').trim();
+      const quantity = Math.max(1, Math.floor(Number(body.quantity || 1)));
+      if (!productId) {
+        return NextResponse.json(
+          { success: false, message: 'Product is required.' },
+          { status: 400 }
+        );
+      }
+
+      const product = await MerchProduct.findOneAndUpdate(
+        {
+          _id: productId,
+          status: 'active',
+          approvalStatus: 'approved',
+          stock: { $gte: quantity },
+        },
+        { $inc: { stock: -quantity } },
+        { new: true }
+      );
+      if (!product) {
+        return NextResponse.json(
+          { success: false, message: 'Product unavailable or out of stock.' },
+          { status: 409 }
+        );
+      }
+      merchReservation = { productId: product._id, quantity };
+      if (product.stock <= 0) {
+        product.status = 'out_of_stock';
+        await product.save();
+      }
+
+      amount = Math.round(Number(product.price || 0) * quantity);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        await restoreMerchandiseStock(product._id, quantity);
+        merchReservation = null;
+        return NextResponse.json(
+          { success: false, message: 'Product amount must be greater than zero.' },
+          { status: 400 }
+        );
+      }
+      const event = product.eventId
+        ? await Event.findById(product.eventId).select('commercialTerms').lean()
+        : null;
+      const commissionPercent = Math.min(
+        100,
+        Math.max(
+          0,
+          Number(
+            product.commissionPercent ??
+              event?.commercialTerms?.merchandiseCommissionPercent ??
+              superadmin?.merchandiseCommissionPercent ??
+              process.env.MERCH_PLATFORM_COMMISSION_PERCENT ??
+              15
+          )
+        )
+      );
+      meta = {
+        ...meta,
+        paymentType: 'merchandise',
+        productId: String(product._id),
+        productName: product.name,
+        organizerId: product.organizerId || null,
+        organizerName: product.organizerName || '',
+        quantity,
+        unitPrice: Number(product.price || 0),
+        commissionPercent,
+        deliveryLocation: String(body.deliveryLocation || '').trim(),
+        notes: String(body.notes || '').trim(),
+        buyerName: String(body.buyerName || '').trim(),
+      };
+    } else if (paymentType === 'vote') {
       const campaignId = String(body.campaignId || body.eventId || '').trim();
       const contestantId = String(body.contestantId || '').trim();
       const packageId = String(body.packageId || '').trim();
@@ -563,7 +674,38 @@ export async function POST(req) {
     if (!hasMpesaConfig()) {
       const mockCheckoutRequestId = `CHECKOUT-${Date.now()}`;
 
-      if (paymentType === 'vote') {
+      if (paymentType === 'merchandise') {
+        const platformCommissionAmount = Math.round(
+          amount * (meta.commissionPercent / 100)
+        );
+        await MerchOrder.create({
+          productId: meta.productId,
+          organizerId: meta.organizerId,
+          organizerName: meta.organizerName,
+          productName: meta.productName,
+          unitPrice: meta.unitPrice,
+          quantity: meta.quantity,
+          totalAmount: amount,
+          commissionPercent: meta.commissionPercent,
+          platformCommissionAmount,
+          organizerEarningsAmount: Math.max(
+            0,
+            amount - platformCommissionAmount
+          ),
+          currency: 'KSH',
+          buyerEmail: email,
+          buyerName: meta.buyerName,
+          buyerPhone: phone,
+          deliveryLocation: meta.deliveryLocation,
+          notes: meta.notes,
+          paymentStatus: 'paid',
+          paymentReference: mockCheckoutRequestId,
+          checkoutRequestId: mockCheckoutRequestId,
+          paidAt: new Date(),
+          status: 'pending',
+        });
+        merchReservation = null;
+      } else if (paymentType === 'vote') {
         const platformCommissionAmount = Math.round(
           amount * ((meta.commissionPercent ?? 20) / 100)
         );
@@ -686,12 +828,10 @@ export async function POST(req) {
           customerPhone: phone,
           customerEmail: meta.customerEmail || '',
           referralCampaignId: meta.referralCampaignId || null,
-          referralCompetitionEventId:
-            meta.referralCompetitionEventId || null,
+          referralCompetitionEventId: meta.referralCompetitionEventId || null,
           referralContestantId: meta.referralContestantId || '',
           referralContestantName: meta.referralContestantName || '',
-          referralContestantCategory:
-            meta.referralContestantCategory || '',
+          referralContestantCategory: meta.referralContestantCategory || '',
           status: 'paid',
           merchantRequestId: `MOCK-${Date.now()}`,
           checkoutRequestId: mockCheckoutRequestId,
@@ -740,6 +880,7 @@ export async function POST(req) {
     const resolvedPartyB = normalizeDigits(partyB || businessShortCode);
 
     if (!businessShortCode || !resolvedPartyB) {
+      await restoreReservation();
       return NextResponse.json(
         {
           success: false,
@@ -763,7 +904,9 @@ export async function POST(req) {
     const accountReference = sanitizeMpesaField(
       paymentType === 'vote'
         ? meta.campaignId || 'VOTE'
-        : meta.eventId || 'TICKET',
+        : paymentType === 'merchandise'
+          ? meta.productId || 'MERCH'
+          : meta.eventId || 'TICKET',
       'NIMBLY',
       12
     );
@@ -771,7 +914,9 @@ export async function POST(req) {
     const transactionDesc = sanitizeMpesaField(
       paymentType === 'vote' || paymentType === 'competition_vote'
         ? `Vote ${meta.campaignTitle || meta.eventTitle || 'Competition'}`
-        : `Ticket ${meta.eventTitle || 'Event'}`,
+        : paymentType === 'merchandise'
+          ? `Merch ${meta.productName || 'Order'}`
+          : `Ticket ${meta.eventTitle || 'Event'}`,
       'Payment',
       40
     );
@@ -802,6 +947,7 @@ export async function POST(req) {
         cache: 'no-store',
       });
     } catch (error) {
+      await restoreReservation();
       return NextResponse.json(
         {
           success: false,
@@ -814,6 +960,7 @@ export async function POST(req) {
     const data = await readResponseBody(response);
 
     if (!response.ok || data?.errorCode) {
+      await restoreReservation();
       const safeDebug = {
         mode,
         paymentType,
@@ -853,6 +1000,7 @@ export async function POST(req) {
     const merchantRequestId = data?.MerchantRequestID;
 
     if (!checkoutRequestId || !merchantRequestId) {
+      await restoreReservation();
       return NextResponse.json(
         {
           success: false,
@@ -883,7 +1031,37 @@ export async function POST(req) {
       customerPhone: phone,
     });
 
-    if (paymentType === 'vote') {
+    if (paymentType === 'merchandise') {
+      const platformCommissionAmount = Math.round(
+        amount * (meta.commissionPercent / 100)
+      );
+      await MerchOrder.create({
+        productId: meta.productId,
+        organizerId: meta.organizerId,
+        organizerName: meta.organizerName,
+        productName: meta.productName,
+        unitPrice: meta.unitPrice,
+        quantity: meta.quantity,
+        totalAmount: amount,
+        commissionPercent: meta.commissionPercent,
+        platformCommissionAmount,
+        organizerEarningsAmount: Math.max(
+          0,
+          amount - platformCommissionAmount
+        ),
+        currency: 'KSH',
+        buyerEmail: email,
+        buyerName: meta.buyerName,
+        buyerPhone: phone,
+        deliveryLocation: meta.deliveryLocation,
+        notes: meta.notes,
+        paymentStatus: 'pending',
+        paymentReference: checkoutRequestId,
+        checkoutRequestId,
+        status: 'pending',
+      });
+      merchReservation = null;
+    } else if (paymentType === 'vote') {
       const platformCommissionAmount = Math.round(
         amount * ((meta.commissionPercent ?? 20) / 100)
       );
@@ -984,12 +1162,10 @@ export async function POST(req) {
         customerPhone: phone,
         customerEmail: meta.customerEmail || '',
         referralCampaignId: meta.referralCampaignId || null,
-        referralCompetitionEventId:
-          meta.referralCompetitionEventId || null,
+        referralCompetitionEventId: meta.referralCompetitionEventId || null,
         referralContestantId: meta.referralContestantId || '',
         referralContestantName: meta.referralContestantName || '',
-        referralContestantCategory:
-          meta.referralContestantCategory || '',
+        referralContestantCategory: meta.referralContestantCategory || '',
         status: 'pending',
         merchantRequestId,
         checkoutRequestId,
@@ -1011,6 +1187,13 @@ export async function POST(req) {
         data?.CustomerMessage || 'M-Pesa prompt sent to your phone.',
     });
   } catch (error) {
+    if (merchReservation) {
+      try {
+        await restoreReservation();
+      } catch (restoreError) {
+        console.error('Unable to restore merchandise stock:', restoreError);
+      }
+    }
     console.error('MPESA checkout error:', error);
     return NextResponse.json(
       {

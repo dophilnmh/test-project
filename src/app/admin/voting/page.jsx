@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
+import { Copy } from 'lucide-react';
 import { ImageCropUploadField } from '@/components/ui/ImageCropUploadField';
 
 const STATUS_OPTIONS = ['draft', 'pending', 'live', 'ended', 'archived'];
@@ -9,8 +10,11 @@ const POLLS_PER_PAGE = 8;
 
 export default function AdminVotingPage() {
   const [campaigns, setCampaigns] = useState([]);
+  const [ticketEvents, setTicketEvents] = useState([]);
+  const [ticketEventSelections, setTicketEventSelections] = useState({});
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState('');
+  const [copiedTicketLink, setCopiedTicketLink] = useState('');
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -37,13 +41,41 @@ export default function AdminVotingPage() {
   const loadCampaigns = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/voting/campaigns?scope=admin', {
-        cache: 'no-store',
-      });
-      const data = await response.json();
-      if (response.ok && data?.success) {
-        setCampaigns(data.campaigns || []);
+      const [campaignResponse, eventResponse] = await Promise.all([
+        fetch('/api/voting/campaigns?scope=admin', { cache: 'no-store' }),
+        fetch('/api/events?scope=all', { cache: 'no-store' }),
+      ]);
+      const [campaignData, eventData] = await Promise.all([
+        campaignResponse.json(),
+        eventResponse.json(),
+      ]);
+      if (campaignResponse.ok && campaignData?.success) {
+        const nextCampaigns = campaignData.campaigns || [];
+        setCampaigns(nextCampaigns);
+        setTicketEventSelections((previous) => {
+          const next = { ...previous };
+          nextCampaigns.forEach((campaign) => {
+            next[campaign._id] =
+              previous[campaign._id] ?? String(campaign.eventId || '');
+          });
+          return next;
+        });
+      } else {
+        setFeedback(campaignData?.message || 'Unable to load polls.');
       }
+      if (eventResponse.ok && eventData?.success) {
+        setTicketEvents(
+          (eventData.events || []).filter(
+            (event) =>
+              event.status === 'approved' &&
+              (!event.eventType || event.eventType === 'ticketing')
+          )
+        );
+      } else {
+        setFeedback(eventData?.message || 'Unable to load approved ticket events.');
+      }
+    } catch {
+      setFeedback('Unable to load polls and ticket events. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -96,14 +128,24 @@ export default function AdminVotingPage() {
     campaignId,
     status,
     commissionPercent,
-    publicVoteDisplay
+    publicVoteDisplay,
+    ticketEventId
   ) => {
     setFeedback('');
+    if (status === 'live' && !ticketEventId) {
+      setFeedback('Select an approved ticket event before approving this poll.');
+      return;
+    }
 
     const response = await fetch(`/api/voting/campaigns/${campaignId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, commissionPercent, publicVoteDisplay }),
+      body: JSON.stringify({
+        status,
+        commissionPercent,
+        publicVoteDisplay,
+        ticketEventId,
+      }),
     });
 
     const data = await response.json();
@@ -112,6 +154,31 @@ export default function AdminVotingPage() {
       loadCampaigns();
     } else {
       setFeedback(data.message || 'Unable to update campaign');
+    }
+  };
+
+  const getContestantTicketLink = (campaign, contestant) => {
+    if (!campaign.eventId) return '';
+    return `/events/${encodeURIComponent(String(campaign.eventId))}?${new URLSearchParams(
+      { ref: String(contestant._id) }
+    ).toString()}`;
+  };
+
+  const copyContestantTicketLink = async (campaign, contestant) => {
+    const path = getContestantTicketLink(campaign, contestant);
+    if (!path) {
+      setFeedback('This poll is not linked to a ticketing event.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        new URL(path, window.location.origin).toString()
+      );
+      setCopiedTicketLink(`${campaign._id}:${contestant._id}`);
+      setFeedback(`Ticket link copied for ${contestant.name}.`);
+    } catch {
+      setFeedback(`Unable to copy the ticket link for ${contestant.name}.`);
     }
   };
 
@@ -701,9 +768,46 @@ export default function AdminVotingPage() {
                               className="flex justify-between gap-3"
                             >
                               <span>{nominee.name}</span>
-                              <span className="font-semibold text-foreground">
-                                {Number(nominee.voteCount || 0)}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {Number(nominee.voteCount || 0)}
+                                </span>
+                                {campaign.eventId && nominee._id ? (
+                                  <div className="flex items-center gap-1">
+                                    <a
+                                      href={getContestantTicketLink(
+                                        campaign,
+                                        nominee
+                                      )}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary underline underline-offset-2"
+                                    >
+                                      Ticket page
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        copyContestantTicketLink(
+                                          campaign,
+                                          nominee
+                                        )
+                                      }
+                                      aria-label={`Copy ticket link for ${nominee.name}`}
+                                      title="Copy contestant ticket link"
+                                      className="rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </button>
+                                    {copiedTicketLink ===
+                                    `${campaign._id}:${nominee._id}` ? (
+                                      <span className="text-[10px] text-success">
+                                        Copied
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
                           ))
                         )}
@@ -711,6 +815,34 @@ export default function AdminVotingPage() {
                     </td>
                     <td className="px-2 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <select
+                          aria-label={`Ticket event for ${campaign.title}`}
+                          className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium"
+                          value={
+                            ticketEventSelections[campaign._id] ||
+                            String(campaign.eventId || '')
+                          }
+                          onChange={(event) =>
+                            setTicketEventSelections((previous) => ({
+                              ...previous,
+                              [campaign._id]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Select ticket event</option>
+                          {ticketEvents
+                            .filter(
+                              (event) =>
+                                !campaign.organizerId ||
+                                String(event.organizerId?._id || event.organizerId) ===
+                                  String(campaign.organizerId?._id || campaign.organizerId)
+                            )
+                            .map((event) => (
+                              <option key={event._id} value={event._id}>
+                                {event.title}
+                              </option>
+                            ))}
+                        </select>
                         {STATUS_OPTIONS.map((status) => (
                           <button
                             key={`${campaign._id}-${status}`}
@@ -722,7 +854,9 @@ export default function AdminVotingPage() {
                                 status === 'live'
                                   ? form.commissionPercent
                                   : undefined,
-                                campaign.publicVoteDisplay || 'count'
+                                campaign.publicVoteDisplay || 'count',
+                                ticketEventSelections[campaign._id] ||
+                                  String(campaign.eventId || '')
                               )
                             }
                             className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:border-primary/60"

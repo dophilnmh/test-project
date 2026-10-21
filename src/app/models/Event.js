@@ -123,6 +123,11 @@ const eventSchema = new Schema(
       },
     },
     competition: {
+      ticketEventId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Event',
+        default: null,
+      },
       categories: { type: [String], default: [] },
       maxVotesPerTransaction: {
         type: Number,

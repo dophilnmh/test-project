@@ -25,7 +25,9 @@ export default function PollContestantRegistrationPage() {
         );
         const data = await response.json();
         if (!response.ok || !data?.success) {
-          setError(data?.message || 'This poll registration link is unavailable.');
+          setError(
+            data?.message || 'This poll registration link is unavailable.'
+          );
           setCampaign(null);
           return;
         }

@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server';
 import { setCheckoutStatus, getCheckoutStatus } from '@/lib/mpesaStatusStore';
 import connect from '@/app/utils/db';
 import TicketOrder from '@/app/models/TicketOrder';
+import MerchOrder from '@/app/models/MerchOrder';
+import MerchProduct from '@/app/models/MerchProduct';
 import Event from '@/app/models/Event';
 import VotingTransaction from '@/app/models/VotingTransaction';
 import CompetitionVoteTransaction from '@/app/models/CompetitionVoteTransaction';
@@ -163,16 +165,24 @@ async function resolvePaymentFromCheckout(checkoutRequestId, hintedType) {
     if (order) return { paymentType: 'ticket', order };
   }
 
-  const [voteTx, competitionVoteTx, ticketOrder] = await Promise.all([
+  if (hint === 'merchandise') {
+    const order = await MerchOrder.findOne({ checkoutRequestId });
+    if (order) return { paymentType: 'merchandise', merchOrder: order };
+  }
+
+  const [voteTx, competitionVoteTx, ticketOrder, merchOrder] = await Promise.all([
     VotingTransaction.findOne({ checkoutRequestId }),
     CompetitionVoteTransaction.findOne({ checkoutRequestId }),
     TicketOrder.findOne({ checkoutRequestId }),
+    MerchOrder.findOne({ checkoutRequestId }),
   ]);
 
   if (voteTx) return { paymentType: 'vote', transaction: voteTx };
   if (competitionVoteTx)
     return { paymentType: 'competition_vote', transaction: competitionVoteTx };
   if (ticketOrder) return { paymentType: 'ticket', order: ticketOrder };
+  if (merchOrder)
+    return { paymentType: 'merchandise', merchOrder };
 
   return { paymentType: hint || 'ticket' };
 }
@@ -400,6 +410,45 @@ export async function POST(req) {
               });
             }
           }
+        }
+      } else if (paymentType === 'merchandise') {
+        const order =
+          resolvedPayment.merchOrder ||
+          (await MerchOrder.findOne({ checkoutRequestId }));
+        if (order) {
+          const wasAlreadyPaid = order.paymentStatus === 'paid';
+          const shouldRestoreStock =
+            !paid && order.paymentStatus === 'pending';
+          order.paymentStatus = paid ? 'paid' : 'failed';
+          order.resultCode = resultCode;
+          order.resultDesc = resultDesc;
+          order.mpesaReceiptNumber =
+            findItemValue('MpesaReceiptNumber') || '';
+          if (paid) {
+            order.paidAt = new Date();
+            order.paymentReference =
+              order.paymentReference || checkoutRequestId;
+          }
+          await order.save();
+
+          if (shouldRestoreStock) {
+            const product = await MerchProduct.findByIdAndUpdate(
+              order.productId,
+              { $inc: { stock: order.quantity } },
+              { new: true }
+            );
+            if (product?.status === 'out_of_stock' && product.stock > 0) {
+              product.status = 'active';
+              await product.save();
+            }
+          }
+
+          console.log('✅ Merchandise order payment updated:', {
+            orderId: order._id,
+            paymentStatus: order.paymentStatus,
+            wasAlreadyPaid,
+            stockRestored: shouldRestoreStock,
+          });
         }
       } else {
         const order =

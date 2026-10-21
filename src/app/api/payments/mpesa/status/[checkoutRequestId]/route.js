@@ -2,6 +2,7 @@ import { after, NextResponse } from 'next/server';
 import { getCheckoutStatus } from '@/lib/mpesaStatusStore';
 import connect from '@/app/utils/db';
 import TicketOrder from '@/app/models/TicketOrder';
+import MerchOrder from '@/app/models/MerchOrder';
 import VotingTransaction from '@/app/models/VotingTransaction';
 import CompetitionVoteTransaction from '@/app/models/CompetitionVoteTransaction';
 import { POST as processMpesaCallback } from '../../callback/route';
@@ -31,11 +32,17 @@ async function queryMpesaCheckout(checkoutRequestId) {
   }
 
   const configuredBaseUrl = String(process.env.MPESA_BASE_URL || '').trim();
-  const isLive = String(process.env.MPESA_ENV || '').trim().toLowerCase() === 'live';
-  const baseUrl = (configuredBaseUrl || (isLive
-    ? 'https://api.safaricom.co.ke'
-    : 'https://sandbox.safaricom.co.ke')).replace(/\/$/, '');
-  const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+  const isLive =
+    String(process.env.MPESA_ENV || '')
+      .trim()
+      .toLowerCase() === 'live';
+  const baseUrl = (
+    configuredBaseUrl ||
+    (isLive ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke')
+  ).replace(/\/$/, '');
+  const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString(
+    'base64'
+  );
   const tokenResponse = await fetch(
     `${baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
     {
@@ -48,25 +55,24 @@ async function queryMpesaCheckout(checkoutRequestId) {
   if (!tokenResponse.ok || !tokenData?.access_token) return null;
 
   const timestamp = getMpesaTimestamp();
-  const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
-  const queryResponse = await fetch(
-    `${baseUrl}/mpesa/stkpushquery/v1/query`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        BusinessShortCode: shortcode,
-        Password: password,
-        Timestamp: timestamp,
-        CheckoutRequestID: checkoutRequestId,
-      }),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10000),
-    }
+  const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString(
+    'base64'
   );
+  const queryResponse = await fetch(`${baseUrl}/mpesa/stkpushquery/v1/query`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tokenData.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      BusinessShortCode: shortcode,
+      Password: password,
+      Timestamp: timestamp,
+      CheckoutRequestID: checkoutRequestId,
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(10000),
+  });
   const queryData = await queryResponse.json();
   return queryResponse.ok ? queryData : null;
 }
@@ -74,11 +80,13 @@ async function queryMpesaCheckout(checkoutRequestId) {
 async function resolveStatusFromDb(checkoutRequestId) {
   await connect();
 
-  const [ticketOrder, voteTx, competitionVoteTx] = await Promise.all([
-    TicketOrder.findOne({ checkoutRequestId }).lean(),
-    VotingTransaction.findOne({ checkoutRequestId }).lean(),
-    CompetitionVoteTransaction.findOne({ checkoutRequestId }).lean(),
-  ]);
+  const [ticketOrder, voteTx, competitionVoteTx, merchOrder] =
+    await Promise.all([
+      TicketOrder.findOne({ checkoutRequestId }).lean(),
+      VotingTransaction.findOne({ checkoutRequestId }).lean(),
+      CompetitionVoteTransaction.findOne({ checkoutRequestId }).lean(),
+      MerchOrder.findOne({ checkoutRequestId }).lean(),
+    ]);
 
   if (ticketOrder) {
     return {
@@ -100,6 +108,27 @@ async function resolveStatusFromDb(checkoutRequestId) {
       customerPhone: ticketOrder.customerPhone || '',
       customerEmail: ticketOrder.customerEmail || '',
       createdAt: ticketOrder.createdAt || null,
+    };
+  }
+
+  if (merchOrder) {
+    return {
+      paymentType: 'merchandise',
+      status: String(merchOrder.paymentStatus || 'pending').toLowerCase(),
+      resultCode: merchOrder.resultCode,
+      resultDesc:
+        merchOrder.resultDesc ||
+        (merchOrder.paymentStatus === 'paid'
+          ? 'Merchandise payment confirmed'
+          : 'Merchandise payment pending'),
+      mpesaReceiptNumber: merchOrder.mpesaReceiptNumber || '',
+      paidAt: merchOrder.paidAt || null,
+      productName: merchOrder.productName || '',
+      quantity: Number(merchOrder.quantity || 0),
+      amount: Number(merchOrder.totalAmount || 0),
+      customerPhone: merchOrder.buyerPhone || '',
+      customerEmail: merchOrder.buyerEmail || '',
+      createdAt: merchOrder.createdAt || null,
     };
   }
 
@@ -168,7 +197,8 @@ export async function GET(req, context) {
                 CheckoutRequestID: checkoutRequestId,
                 ResultCode: 0,
                 ResultDesc:
-                  queryResult.ResultDesc || 'Payment confirmed by M-Pesa status query.',
+                  queryResult.ResultDesc ||
+                  'Payment confirmed by M-Pesa status query.',
               },
             },
           };

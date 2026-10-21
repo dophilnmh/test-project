@@ -101,6 +101,47 @@ export async function POST(req, context) {
       );
     }
 
+    let linkedTicketEvent = null;
+    if (action === 'approve' && existing.eventType === 'competition') {
+      const ticketEventId = String(
+        body?.ticketEventId || existing.competition?.ticketEventId || ''
+      ).trim();
+      if (!ticketEventId) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Select an approved ticketing event before approving this competition.',
+          },
+          { status: 400 }
+        );
+      }
+      if (!/^[a-f\d]{24}$/i.test(ticketEventId)) {
+        return NextResponse.json(
+          { success: false, message: 'Invalid ticketing event id.' },
+          { status: 400 }
+        );
+      }
+      linkedTicketEvent = await Event.findOne({
+        _id: ticketEventId,
+        organizerId: existing.organizerId,
+        status: 'approved',
+        $or: [{ eventType: 'ticketing' }, { eventType: { $exists: false } }],
+      })
+        .select('_id')
+        .lean();
+      if (!linkedTicketEvent) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              'Choose an approved ticketing event owned by this competition organizer.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updated = await Event.findByIdAndUpdate(
       eventId,
       {
@@ -108,6 +149,9 @@ export async function POST(req, context) {
         publishedAt: action === 'approve' ? new Date() : null,
         rejectionReason: action === 'reject' ? rejectionReason : '',
         ...(action === 'approve' ? { commercialTerms } : {}),
+        ...(linkedTicketEvent
+          ? { 'competition.ticketEventId': linkedTicketEvent._id }
+          : {}),
       },
       { new: true }
     ).lean();

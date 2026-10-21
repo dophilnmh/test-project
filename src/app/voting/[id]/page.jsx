@@ -213,6 +213,16 @@ export default function VotingDetailPage() {
     const ends = new Date(campaign.endDateTime);
     return campaign.status === 'live' && now >= starts && now <= ends;
   }, [campaign]);
+  const showPublicResults =
+    campaign?.resultVisibility === 'live' ||
+    campaign?.status === 'ended' ||
+    (campaign?.endDateTime && now >= new Date(campaign.endDateTime).getTime());
+  const publicVoteDisplay = ['count', 'percent', 'hide'].includes(
+    campaign?.publicVoteDisplay
+  )
+    ? campaign.publicVoteDisplay
+    : 'count';
+  const showVoteFigures = showPublicResults && publicVoteDisplay !== 'hide';
 
   const contestants = useMemo(
     () => campaign?.contestants || campaign?.nominees || [],
@@ -403,6 +413,10 @@ export default function VotingDetailPage() {
                     contestantTotalVotes > 0
                       ? (contestant.votes / contestantTotalVotes) * 100
                       : 0;
+                  const voteFigure =
+                    publicVoteDisplay === 'percent'
+                      ? `${percent.toFixed(1)}%`
+                      : `${contestant.votes} vote${contestant.votes === 1 ? '' : 's'}`;
                   const selected =
                     String(contestant._id) === selectedContestantId;
 
@@ -440,18 +454,27 @@ export default function VotingDetailPage() {
                         <span className="min-w-0 truncate text-sm font-semibold text-foreground sm:text-base">
                           {contestant.name}
                         </span>
-                        <span
-                          className="h-3 min-w-0 overflow-hidden rounded-full bg-muted"
-                          role="progressbar"
-                          aria-label={`${contestant.name} vote share`}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={Number(percent.toFixed(1))}
-                        >
+                        <span className="min-w-0">
+                          {showVoteFigures ? (
+                            <span className="mb-1 block text-right text-xs font-semibold text-foreground sm:text-sm">
+                              {voteFigure}
+                            </span>
+                          ) : null}
                           <span
-                            className="block h-full rounded-full bg-primary transition-[width] duration-500"
-                            style={{ width: `${Math.min(100, percent)}%` }}
-                          />
+                            className={`block h-3 min-w-0 overflow-hidden rounded-full bg-muted ${
+                              showVoteFigures ? '' : 'invisible'
+                            }`}
+                            role="progressbar"
+                            aria-label={`${contestant.name} vote share`}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={Number(percent.toFixed(1))}
+                          >
+                            <span
+                              className="block h-full rounded-full bg-primary transition-[width] duration-500"
+                              style={{ width: `${Math.min(100, percent)}%` }}
+                            />
+                          </span>
                         </span>
                       </button>
                       <button

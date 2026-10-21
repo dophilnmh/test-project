@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Copy, Link2 } from 'lucide-react';
 import { formatKsh } from '@/lib/currency';
 
 const PRODUCT_STATUSES = ['draft', 'active', 'out_of_stock', 'archived'];
@@ -21,6 +22,7 @@ export default function AdminShopPage() {
   const [creating, setCreating] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [selectedImages, setSelectedImages] = useState([]);
+  const [copiedProductId, setCopiedProductId] = useState('');
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -66,6 +68,7 @@ export default function AdminShopPage() {
     ).length;
     const revenue = orders
       .filter((item) =>
+        item.paymentStatus === 'paid' ||
         ['confirmed', 'packed', 'shipped', 'delivered'].includes(item.status)
       )
       .reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
@@ -181,6 +184,20 @@ export default function AdminShopPage() {
 
     setFeedback(data.message || 'Order updated');
     await loadData();
+  };
+
+  const copyProductLink = async (productId) => {
+    const link = new URL('/shop', window.location.origin);
+    link.searchParams.set('productId', productId);
+    link.hash = `product-${productId}`;
+
+    try {
+      await navigator.clipboard.writeText(link.toString());
+      setCopiedProductId(productId);
+      setFeedback('Merchandise link copied to the clipboard.');
+    } catch {
+      setFeedback('Unable to copy the merchandise link.');
+    }
   };
 
   return (
@@ -340,6 +357,7 @@ export default function AdminShopPage() {
                 <th className="px-2 py-3">Stock</th>
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3">Approval</th>
+                <th className="px-2 py-3">Share Link</th>
                 <th className="px-2 py-3">Actions</th>
               </tr>
             </thead>
@@ -359,6 +377,22 @@ export default function AdminShopPage() {
                         </p>
                       ) : null}
                     </div>
+                  </td>
+                  <td className="px-2 py-3">
+                    <button
+                      type="button"
+                      onClick={() => copyProductLink(String(product._id))}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-primary/40 px-2.5 py-1 text-xs text-primary hover:bg-primary/10"
+                    >
+                      {copiedProductId === String(product._id) ? (
+                        <Copy className="h-3.5 w-3.5" />
+                      ) : (
+                        <Link2 className="h-3.5 w-3.5" />
+                      )}
+                      {copiedProductId === String(product._id)
+                        ? 'Copied'
+                        : 'Copy link'}
+                    </button>
                   </td>
                   <td className="px-2 py-3">
                     <div className="flex flex-wrap gap-2">
@@ -418,6 +452,7 @@ export default function AdminShopPage() {
                 <th className="px-2 py-3">Product</th>
                 <th className="px-2 py-3">Buyer</th>
                 <th className="px-2 py-3">Total</th>
+                <th className="px-2 py-3">Payment</th>
                 <th className="px-2 py-3">Location</th>
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3">Actions</th>
@@ -434,6 +469,9 @@ export default function AdminShopPage() {
                     </p>
                   </td>
                   <td className="px-2 py-3">{formatKsh(order.totalAmount)}</td>
+                  <td className="px-2 py-3">
+                    {order.paymentStatus || 'paid'}
+                  </td>
                   <td className="px-2 py-3">{order.deliveryLocation}</td>
                   <td className="px-2 py-3">{order.status}</td>
                   <td className="px-2 py-3">

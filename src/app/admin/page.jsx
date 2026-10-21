@@ -31,6 +31,7 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState('');
   const [actionEventId, setActionEventId] = useState('');
   const [commissionDrafts, setCommissionDrafts] = useState({});
+  const [ticketEventSelections, setTicketEventSelections] = useState({});
   const [fundActionId, setFundActionId] = useState('');
   const [fundSearch, setFundSearch] = useState('');
   const [fundStatusFilter, setFundStatusFilter] = useState('all');
@@ -78,6 +79,15 @@ export default function AdminDashboardPage() {
       }
 
       setQueue(Array.isArray(pendingData.events) ? pendingData.events : []);
+      setTicketEventSelections((previous) => {
+        const next = { ...previous };
+        (pendingData.events || []).forEach((event) => {
+          next[event._id] =
+            previous[event._id] ??
+            String(event.competition?.ticketEventId || '');
+        });
+        return next;
+      });
       setPublishedCount(
         Array.isArray(publicData.events) ? publicData.events.length : 0
       );
@@ -183,6 +193,18 @@ export default function AdminDashboardPage() {
   const review = async (id, action) => {
     setFeedback('');
     setError('');
+    const event = queue.find((item) => String(item._id) === String(id));
+    const ticketEventId =
+      ticketEventSelections[id] ||
+      String(event?.competition?.ticketEventId || '');
+    if (
+      action === 'approve' &&
+      event?.eventType === 'competition' &&
+      !ticketEventId
+    ) {
+      setError('Select a ticketing event before approving this competition.');
+      return;
+    }
     setActionEventId(id);
 
     let rejectionReason = '';
@@ -200,7 +222,14 @@ export default function AdminDashboardPage() {
       const response = await fetch(`/api/events/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, rejectionReason, ...draft }),
+        body: JSON.stringify({
+          action,
+          rejectionReason,
+          ...draft,
+          ...(action === 'approve' && event?.eventType === 'competition'
+            ? { ticketEventId }
+            : {}),
+        }),
       });
       const data = await response.json();
 
@@ -1011,6 +1040,51 @@ export default function AdminDashboardPage() {
                                 </label>
                               ))}
                             </div>
+                            {item.eventType === 'competition' ? (
+                              <label className="block text-[10px] font-semibold text-muted-foreground">
+                                Contestant ticket event
+                                <select
+                                  className="mt-0.5 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground"
+                                  value={
+                                    ticketEventSelections[item._id] ||
+                                    String(item.competition?.ticketEventId || '')
+                                  }
+                                  onChange={(event) =>
+                                    setTicketEventSelections((previous) => ({
+                                      ...previous,
+                                      [item._id]: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">
+                                    Select an approved ticket event
+                                  </option>
+                                  {approvedEvents
+                                    .filter(
+                                      (ticketEvent) =>
+                                        ticketEvent.status === 'approved' &&
+                                        (!ticketEvent.eventType ||
+                                          ticketEvent.eventType === 'ticketing') &&
+                                        String(
+                                          ticketEvent.organizerId?._id ||
+                                            ticketEvent.organizerId
+                                        ) ===
+                                          String(
+                                            item.organizerId?._id ||
+                                              item.organizerId
+                                          )
+                                    )
+                                    .map((ticketEvent) => (
+                                      <option
+                                        key={ticketEvent._id}
+                                        value={ticketEvent._id}
+                                      >
+                                        {ticketEvent.title}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                            ) : null}
                             <div className="flex gap-2">
                               <button
                                 onClick={() => review(item._id, 'approve')}

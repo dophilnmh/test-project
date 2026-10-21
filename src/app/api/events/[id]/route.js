@@ -469,10 +469,11 @@ export async function PATCH(req, context) {
     const body = await req.json();
     const hasTierUpdate = Array.isArray(body?.tiers);
     const hasStatusUpdate = body?.status !== undefined;
+    const hasTicketEventUpdate = body?.ticketEventId !== undefined;
     const nextStatus = String(body?.status || '').trim();
     const allowedStatus = ['pending', 'approved', 'rejected'];
 
-    if (!hasStatusUpdate && !hasTierUpdate) {
+    if (!hasStatusUpdate && !hasTierUpdate && !hasTicketEventUpdate) {
       return NextResponse.json(
         { success: false, message: 'No event changes were provided.' },
         { status: 400 }
@@ -493,6 +494,79 @@ export async function PATCH(req, context) {
         { success: false, message: 'Event not found' },
         { status: 404 }
       );
+    }
+
+    if (hasTicketEventUpdate || (hasStatusUpdate && nextStatus === 'approved' && existing.eventType === 'competition')) {
+      if (existing.eventType !== 'competition') {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Only competitions can be linked to a ticketing event.',
+          },
+          { status: 400 }
+        );
+      }
+
+      const ticketEventId = String(
+        body?.ticketEventId || existing.competition?.ticketEventId || ''
+      ).trim();
+      if (
+        existing.status === 'approved' &&
+        hasTicketEventUpdate &&
+        !String(body?.ticketEventId || '').trim()
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Approved competitions must remain linked to a ticketing event.',
+          },
+          { status: 400 }
+        );
+      }
+      if (
+        hasStatusUpdate &&
+        nextStatus === 'approved' &&
+        !ticketEventId
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Select a ticketing event before approving this competition.',
+          },
+          { status: 400 }
+        );
+      }
+      if (ticketEventId) {
+        if (!mongoose.Types.ObjectId.isValid(ticketEventId)) {
+          return NextResponse.json(
+            { success: false, message: 'Invalid ticketing event id.' },
+            { status: 400 }
+          );
+        }
+        const ticketEvent = await Event.findOne({
+          _id: ticketEventId,
+          organizerId: existing.organizerId,
+          status: 'approved',
+          $or: [{ eventType: 'ticketing' }, { eventType: { $exists: false } }],
+        })
+          .select('_id')
+          .lean();
+        if (!ticketEvent) {
+          return NextResponse.json(
+            {
+              success: false,
+              message:
+                'Choose an approved ticketing event owned by this competition organizer.',
+            },
+            { status: 400 }
+          );
+        }
+        existing.competition.ticketEventId = ticketEvent._id;
+        existing.markModified('competition.ticketEventId');
+      } else if (hasTicketEventUpdate) {
+        existing.competition.ticketEventId = null;
+        existing.markModified('competition.ticketEventId');
+      }
     }
 
     if (hasTierUpdate) {

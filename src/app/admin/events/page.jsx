@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarClock, MapPin, Search, UserRound } from 'lucide-react';
+import { CalendarClock, Copy, MapPin, Search, UserRound } from 'lucide-react';
 import { EventDetailsModal } from '@/components/admin/EventDetailsModal';
 
 const PAGE_SIZE = 10;
@@ -17,6 +17,186 @@ function formatDate(value) {
   });
 }
 
+function CompetitionTicketLinks({ event, onSaved, onTicketEventChange }) {
+  const [ticketEvents, setTicketEvents] = useState([]);
+  const [ticketEventId, setTicketEventId] = useState(
+    String(event.competition?.ticketEventId || '')
+  );
+  const [loadingTicketEvents, setLoadingTicketEvents] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const loadTicketEvents = async () => {
+      setLoadingTicketEvents(true);
+      setMessage('');
+      try {
+        const response = await fetch(
+          `/api/events/${event._id}/ticket-links`,
+          { cache: 'no-store' }
+        );
+        const data = await response.json();
+        if (!response.ok || !data?.success) {
+          throw new Error(data?.message || 'Unable to load ticketing events.');
+        }
+        if (active) {
+          setTicketEvents(data.ticketEvents || []);
+          setTicketEventId(String(data.ticketEventId || ''));
+          onTicketEventChange(event._id, String(data.ticketEventId || ''));
+        }
+      } catch (loadError) {
+        if (active) {
+          setMessage(loadError.message || 'Unable to load ticketing events.');
+        }
+      } finally {
+        if (active) setLoadingTicketEvents(false);
+      }
+    };
+    loadTicketEvents();
+    return () => {
+      active = false;
+    };
+  }, [event._id, onTicketEventChange]);
+
+  const saveTicketEvent = async () => {
+    setSaving(true);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/events/${event._id}/ticket-links`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketEventId }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || 'Unable to save ticketing event.');
+      }
+      setTicketEventId(String(data.ticketEventId || ''));
+      setMessage(data.message || 'Ticketing event saved.');
+      await onSaved();
+    } catch (saveError) {
+      setMessage(saveError.message || 'Unable to save ticketing event.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getTicketLink = (contestant) => {
+    if (!ticketEventId) return '';
+    const referral = JSON.stringify({
+      type: 'competition',
+      eventId: String(event._id),
+      fullName: contestant.fullName,
+      category: contestant.category,
+    });
+    return `/events/${encodeURIComponent(ticketEventId)}?${new URLSearchParams(
+      { ref: referral }
+    ).toString()}`;
+  };
+
+  const copyTicketLink = async (contestant) => {
+    const path = getTicketLink(contestant);
+    if (!path) return;
+    try {
+      await navigator.clipboard.writeText(
+        new URL(path, window.location.origin).toString()
+      );
+      setMessage(`Ticket link copied for ${contestant.fullName}.`);
+    } catch {
+      setMessage(`Unable to copy ticket link for ${contestant.fullName}.`);
+    }
+  };
+
+  const contestants = event.competition?.contestants || [];
+
+  return (
+    <div className="mt-4 rounded-lg border border-border/70 bg-background/40 p-3">
+      <h4 className="text-sm font-semibold text-foreground">
+        Contestant ticket links
+      </h4>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Choose one approved ticketing event. Every contestant link will open
+        this exact event.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <select
+          aria-label={`Ticketing event for ${event.title}`}
+          className="min-w-56 flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs"
+          value={ticketEventId}
+          onChange={(changeEvent) => {
+            const nextTicketEventId = changeEvent.target.value;
+            setTicketEventId(nextTicketEventId);
+            onTicketEventChange(event._id, nextTicketEventId);
+          }}
+          disabled={loadingTicketEvents || saving}
+        >
+          <option value="">Select an approved ticketing event</option>
+          {ticketEvents.map((ticketEvent) => (
+            <option key={ticketEvent._id} value={ticketEvent._id}>
+              {ticketEvent.title}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={saveTicketEvent}
+          disabled={
+            saving ||
+            loadingTicketEvents ||
+            ticketEventId === String(event.competition?.ticketEventId || '')
+          }
+          className="rounded-md border border-primary/40 px-3 py-1.5 text-xs font-semibold text-primary disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save event'}
+        </button>
+      </div>
+      {message ? (
+        <p className="mt-2 text-xs text-muted-foreground">{message}</p>
+      ) : null}
+      {event.status === 'approved' && ticketEventId ? (
+        <ul className="mt-3 space-y-2">
+          {contestants.map((contestant) => {
+            const link = getTicketLink(contestant);
+            return (
+              <li
+                key={`${contestant.fullName}-${contestant.category}`}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm"
+              >
+                <span className="text-foreground">
+                  {contestant.fullName}
+                  <span className="ml-1 text-muted-foreground">
+                    · {contestant.category}
+                  </span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary underline underline-offset-2"
+                  >
+                    Ticket page
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => copyTicketLink(contestant)}
+                    aria-label={`Copy ticket link for ${contestant.fullName}`}
+                    title="Copy contestant ticket link"
+                    className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AdminEventsPage() {
   const [events, setEvents] = useState([]);
   const [query, setQuery] = useState('');
@@ -24,6 +204,7 @@ export default function AdminEventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [ticketEventSelections, setTicketEventSelections] = useState({});
   const [canEditTicketTiers, setCanEditTicketTiers] = useState(false);
   const [ticketTierError, setTicketTierError] = useState('');
   const [savingId, setSavingId] = useState('');
@@ -86,7 +267,28 @@ export default function AdminEventsPage() {
     setPage(1);
   }, [query]);
 
-  const updateStatus = async (eventId, nextStatus) => {
+  const handleTicketEventChange = useCallback((eventId, ticketEventId) => {
+    setTicketEventSelections((previous) => ({
+      ...previous,
+      [eventId]: ticketEventId,
+    }));
+  }, []);
+
+  const updateStatus = async (eventId, nextStatus, ticketEventId) => {
+    const event = events.find((item) => String(item._id) === String(eventId));
+    const selectedTicketEventId =
+      ticketEventId ??
+      ticketEventSelections[eventId] ??
+      String(event?.competition?.ticketEventId || '');
+    if (
+      nextStatus === 'approved' &&
+      event?.eventType === 'competition' &&
+      !selectedTicketEventId
+    ) {
+      setError('Select a ticketing event before approving this competition.');
+      return;
+    }
+
     setSavingId(eventId);
     setError('');
 
@@ -94,7 +296,12 @@ export default function AdminEventsPage() {
       const response = await fetch(`/api/events/${eventId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({
+          status: nextStatus,
+          ...(event?.eventType === 'competition' && selectedTicketEventId
+            ? { ticketEventId: selectedTicketEventId }
+            : {}),
+        }),
       });
       const data = await response.json();
 
@@ -217,7 +424,6 @@ export default function AdminEventsPage() {
           {error}
         </div>
       ) : null}
-
       <section className="space-y-3">
         {loading ? (
           <div className="rounded-xl border border-border bg-card/70 p-5 text-sm text-muted-foreground">
@@ -307,6 +513,15 @@ export default function AdminEventsPage() {
                   {deletingId === event._id ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
+
+              {event.eventType === 'competition' ? (
+                <CompetitionTicketLinks
+                  event={event}
+                  onSaved={load}
+                  onTicketEventChange={handleTicketEventChange}
+                />
+              ) : null}
+
             </article>
           ))
         )}

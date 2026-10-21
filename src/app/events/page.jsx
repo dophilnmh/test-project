@@ -27,7 +27,7 @@ import Image from 'next/image';
 const formatTicketName = (name) =>
   (() => {
     const title = String(name || '')
-    .toLowerCase()
+      .toLowerCase()
       .replace(/\b\w/g, (character) => character.toUpperCase());
     return /\sTicket$/i.test(title) ? title : `${title} Ticket`;
   })();
@@ -81,23 +81,26 @@ function PublicEventsPageInner() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [ticketQuantitySelection, setTicketQuantitySelection] = useState({});
 
-  const fetchEvents = useCallback(async (preserveSelections = false) => {
-    if (!preserveSelections) setLoading(true);
-    try {
-      const referralId = String(searchParams.get('ref') || '').trim();
-      const endpoint = referralId
-        ? `/api/events?ref=${encodeURIComponent(referralId)}`
-        : '/api/events';
-      const response = await fetch(endpoint, { cache: 'no-store' });
-      const data = await response.json();
-      if (response.ok && data?.success) {
-        setEvents(data.events || []);
-        if (!preserveSelections) setTicketQuantitySelection({});
+  const fetchEvents = useCallback(
+    async (preserveSelections = false) => {
+      if (!preserveSelections) setLoading(true);
+      try {
+        const referralId = String(searchParams.get('ref') || '').trim();
+        const endpoint = referralId
+          ? `/api/events?ref=${encodeURIComponent(referralId)}`
+          : '/api/events';
+        const response = await fetch(endpoint, { cache: 'no-store' });
+        const data = await response.json();
+        if (response.ok && data?.success) {
+          setEvents(data.events || []);
+          if (!preserveSelections) setTicketQuantitySelection({});
+        }
+      } finally {
+        if (!preserveSelections) setLoading(false);
       }
-    } finally {
-      if (!preserveSelections) setLoading(false);
-    }
-  }, [searchParams]);
+    },
+    [searchParams]
+  );
   useEffect(() => {
     fetchEvents();
     const availabilityTimer = setInterval(() => fetchEvents(true), 5000);
