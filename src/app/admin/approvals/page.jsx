@@ -92,6 +92,7 @@ export default function AdminApprovalsPage() {
       !ticketEventId
     ) {
       setError('Select a ticketing event before approving this competition.');
+      setActionEventId('');
       return;
     }
     if (action === 'reject') {
