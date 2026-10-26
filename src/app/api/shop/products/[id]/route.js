@@ -42,6 +42,26 @@ export async function PATCH(req, { params }) {
     const rawCommissionPercent = body?.commissionPercent;
     const rawImageUrls = Array.isArray(body?.imageUrls) ? body.imageUrls : null;
 
+    if (approvalStatus === 'approved') {
+      const commissionPercent = Number(rawCommissionPercent);
+      if (
+        rawCommissionPercent === undefined ||
+        rawCommissionPercent === null ||
+        String(rawCommissionPercent).trim() === '' ||
+        !Number.isFinite(commissionPercent) ||
+        commissionPercent < 0 ||
+        commissionPercent > 100
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Enter a commission percentage from 0 to 100.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updates = {};
     if (nextStatus) {
       const allowed = ['draft', 'active', 'out_of_stock', 'archived'];
@@ -101,14 +121,8 @@ export async function PATCH(req, { params }) {
       updates.approvedByEmail = String(session.user.email || '').trim();
       updates.approvedAt = approvalStatus === 'approved' ? new Date() : null;
 
-      if (approvalStatus === 'approved' && rawCommissionPercent !== undefined) {
-        const commissionPercent = Math.min(
-          100,
-          Math.max(0, Number(rawCommissionPercent))
-        );
-        if (Number.isFinite(commissionPercent)) {
-          updates.commissionPercent = commissionPercent;
-        }
+      if (approvalStatus === 'approved') {
+        updates.commissionPercent = Number(rawCommissionPercent);
       }
     }
 

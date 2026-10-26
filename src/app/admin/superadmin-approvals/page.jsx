@@ -105,6 +105,17 @@ export default function SuperadminApprovalInboxPage() {
     approvalStatus,
     commissionPercent
   ) => {
+    if (
+      approvalStatus === 'approved' &&
+      (!String(commissionPercent ?? '').trim() ||
+        !Number.isFinite(Number(commissionPercent)) ||
+        Number(commissionPercent) < 0 ||
+        Number(commissionPercent) > 100)
+    ) {
+      setError('Enter a commission percentage from 0 to 100.');
+      return;
+    }
+
     setSaving(true);
     setError('');
     setFeedback('');
@@ -127,7 +138,7 @@ export default function SuperadminApprovalInboxPage() {
           approvalStatus,
           approvalNote,
           ...(approvalStatus === 'approved'
-            ? { commissionPercent: Number(commissionPercent ?? 15) }
+            ? { commissionPercent: Number(commissionPercent) }
             : {}),
         }),
       });
@@ -462,13 +473,14 @@ export default function SuperadminApprovalInboxPage() {
                   <th className="px-2 py-3">Organizer</th>
                   <th className="px-2 py-3">Price</th>
                   <th className="px-2 py-3">Created By</th>
+                  <th className="px-2 py-3">NimblyPolls Commission (%)</th>
                   <th className="px-2 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {(pending.products || []).length === 0 ? (
                   <tr>
-                    <td className="px-2 py-4 text-muted-foreground" colSpan={5}>
+                    <td className="px-2 py-4 text-muted-foreground" colSpan={6}>
                       No pending products.
                     </td>
                   </tr>
@@ -488,13 +500,43 @@ export default function SuperadminApprovalInboxPage() {
                         {product.createdByEmail}
                       </td>
                       <td className="px-2 py-3">
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            aria-label={`NimblyPolls commission percentage for ${product.name}`}
+                            value={
+                              productCommissionDrafts[String(product._id)] ??
+                              String(product.commissionPercent ?? 0)
+                            }
+                            onChange={(event) =>
+                              setProductCommissionDrafts((previous) => ({
+                                ...previous,
+                                [String(product._id)]: event.target.value,
+                              }))
+                            }
+                            className="w-20 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                          />
+                          <span>%</span>
+                        </label>
+                      </td>
+                      <td className="px-2 py-3">
                         <div className="flex gap-2">
                           <button
                             type="button"
                             disabled={saving}
-                            onClick={() =>
-                              updateProductApproval(product._id, 'approved')
-                            }
+                            onClick={() => {
+                              const productId = String(product._id);
+                              updateProductApproval(
+                                product._id,
+                                'approved',
+                                productCommissionDrafts[productId] ??
+                                  product.commissionPercent ??
+                                  0
+                              );
+                            }}
                             className="rounded-md border border-success/60 px-3 py-1 text-xs text-success"
                           >
                             Approve

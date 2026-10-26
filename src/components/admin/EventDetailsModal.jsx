@@ -15,6 +15,24 @@ function formatDate(value) {
   });
 }
 
+function toDateTimeInputValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function normalizeTicketName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 40);
+}
+
 export function EventDetailsModal({
   event,
   open,
@@ -29,9 +47,13 @@ export function EventDetailsModal({
   onSaveTicketTiers,
   savingTicketTiers = false,
   ticketTierError = '',
+  onSaveEventSchedule,
+  savingEventSchedule = false,
+  eventScheduleError = '',
 }) {
   const [ticketDrafts, setTicketDrafts] = useState(() =>
     (event?.tiers || []).map((tier) => ({
+      originalName: String(tier.name || ''),
       name: String(tier.name || ''),
       price: Number(tier.price || 0),
       description: String(tier.description || ''),
@@ -43,16 +65,56 @@ export function EventDetailsModal({
       ),
     }))
   );
+  const [scheduleDraft, setScheduleDraft] = useState(() => ({
+    startDateTime: toDateTimeInputValue(event?.startDateTime),
+    endDateTime: toDateTimeInputValue(event?.endDateTime),
+  }));
 
   if (!open || !event) return null;
 
   const displayedCommissionTerms =
     commissionTerms || event.commercialTerms || {};
-  const invalidTicketDrafts = ticketDrafts.some(
-    (tier) =>
-      Number(tier.totalSlots) < tier.sold ||
-      tier.description.trim().split(/\s+/).filter(Boolean).length > 1000
+  const normalizedTicketNames = ticketDrafts.map((tier) =>
+    normalizeTicketName(tier.name)
   );
+  const invalidTicketDrafts =
+    ticketDrafts.some(
+      (tier) =>
+        normalizeTicketName(tier.name).length < 2 ||
+        !String(tier.price).trim() ||
+        !Number.isFinite(Number(tier.price)) ||
+        Number(tier.price) < 0 ||
+        !String(tier.totalSlots).trim() ||
+        !Number.isFinite(Number(tier.totalSlots)) ||
+        Number(tier.totalSlots) < tier.sold ||
+        tier.description.trim().split(/\s+/).filter(Boolean).length > 1000
+    ) ||
+    new Set(normalizedTicketNames).size !== ticketDrafts.length;
+  const scheduleStart = new Date(scheduleDraft.startDateTime).getTime();
+  const scheduleEnd = new Date(scheduleDraft.endDateTime).getTime();
+  const invalidSchedule =
+    !Number.isFinite(scheduleStart) ||
+    !Number.isFinite(scheduleEnd) ||
+    scheduleEnd <= scheduleStart;
+
+  const saveTicketChanges = async () => {
+    const savedEvent = await onSaveTicketTiers?.(event._id, ticketDrafts);
+    if (!savedEvent) return;
+    setTicketDrafts(
+      (savedEvent.tiers || []).map((tier) => ({
+        originalName: String(tier.name || ''),
+        name: String(tier.name || ''),
+        price: Number(tier.price || 0),
+        description: String(tier.description || ''),
+        isActive: tier.isActive !== false,
+        totalSlots: Number(tier.totalSlots || 0),
+        sold: Math.max(
+          0,
+          Number(tier.totalSlots || 0) - Number(tier.remainingSlots || 0)
+        ),
+      }))
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
@@ -112,6 +174,53 @@ export function EventDetailsModal({
               <CalendarClock className="h-4 w-4 text-primary" />
               Ends {formatDate(event.endDateTime)}
             </p>
+            <div className="grid gap-2 pt-2 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-foreground">
+                Start date and time
+                <input
+                  type="datetime-local"
+                  required
+                  value={scheduleDraft.startDateTime}
+                  onChange={(inputEvent) =>
+                    setScheduleDraft((previous) => ({
+                      ...previous,
+                      startDateTime: inputEvent.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm font-normal"
+                />
+              </label>
+              <label className="text-xs font-semibold text-foreground">
+                End date and time
+                <input
+                  type="datetime-local"
+                  required
+                  value={scheduleDraft.endDateTime}
+                  onChange={(inputEvent) =>
+                    setScheduleDraft((previous) => ({
+                      ...previous,
+                      endDateTime: inputEvent.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm font-normal"
+                />
+              </label>
+            </div>
+            {eventScheduleError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {eventScheduleError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() =>
+                onSaveEventSchedule?.(event._id, scheduleDraft)
+              }
+              disabled={savingEventSchedule || invalidSchedule}
+              className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {savingEventSchedule ? 'Saving schedule...' : 'Save date and time'}
+            </button>
           </div>
 
           <div className="space-y-1 rounded-lg border border-border/70 bg-background/40 p-3 text-sm text-muted-foreground">
@@ -167,18 +276,40 @@ export function EventDetailsModal({
               {(canEditTicketTiers ? ticketDrafts : event.tiers).map(
                 (tier, index) => (
                   <div
-                    key={`${event._id}-${tier.name}`}
+                    key={`${event._id}-${tier.originalName || 'new'}-${index}`}
                     className="rounded-md border border-border/60 bg-background/60 p-3 text-xs text-muted-foreground"
                   >
-                    <p className="font-semibold text-foreground">{tier.name}</p>
                     {canEditTicketTiers ? (
                       <div className="mt-2 space-y-2">
+                        <label className="block">
+                          Ticket type name
+                          <input
+                            type="text"
+                            required
+                            maxLength={40}
+                            value={tier.name}
+                            onChange={(inputEvent) =>
+                              setTicketDrafts((previous) =>
+                                previous.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? {
+                                        ...item,
+                                        name: inputEvent.target.value,
+                                      }
+                                    : item
+                                )
+                              )
+                            }
+                            className="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground"
+                          />
+                        </label>
                         <div className="grid grid-cols-2 gap-2">
                           <label>
                             Price (KSH)
                             <input
                               type="number"
                               min="0"
+                              required
                               value={tier.price}
                               onChange={(inputEvent) =>
                                 setTicketDrafts((previous) =>
@@ -200,6 +331,7 @@ export function EventDetailsModal({
                             <input
                               type="number"
                               min={tier.sold}
+                              required
                               value={tier.totalSlots}
                               onChange={(inputEvent) =>
                                 setTicketDrafts((previous) =>
@@ -272,6 +404,9 @@ export function EventDetailsModal({
                       </div>
                     ) : (
                       <>
+                        <p className="font-semibold text-foreground">
+                          {tier.name}
+                        </p>
                         <p>
                           Price: KSH {Number(tier.price || 0).toLocaleString()}
                         </p>
@@ -303,6 +438,26 @@ export function EventDetailsModal({
           )}
           {canEditTicketTiers ? (
             <>
+              <button
+                type="button"
+                onClick={() =>
+                  setTicketDrafts((previous) => [
+                    ...previous,
+                    {
+                      originalName: '',
+                      name: '',
+                      price: 0,
+                      description: '',
+                      isActive: true,
+                      totalSlots: 0,
+                      sold: 0,
+                    },
+                  ])
+                }
+                className="mt-3 rounded-md border border-primary/40 px-3 py-2 text-sm font-semibold text-primary"
+              >
+                Add ticket type
+              </button>
               {ticketTierError ? (
                 <p role="alert" className="mt-3 text-sm text-destructive">
                   {ticketTierError}
@@ -310,7 +465,7 @@ export function EventDetailsModal({
               ) : null}
               <button
                 type="button"
-                onClick={() => onSaveTicketTiers?.(event._id, ticketDrafts)}
+                onClick={saveTicketChanges}
                 disabled={
                   savingTicketTiers ||
                   ticketDrafts.length === 0 ||

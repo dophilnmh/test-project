@@ -256,7 +256,7 @@ export default function OrganizerShopPage() {
                 <th className="px-2 py-2">Total</th>
                 <th className="px-2 py-2">Platform Share</th>
                 <th className="px-2 py-2">Organizer Share</th>
-                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">Payment / fulfillment</th>
               </tr>
             </thead>
             <tbody>
@@ -270,7 +270,32 @@ export default function OrganizerShopPage() {
                   <td className="px-2 py-2">
                     {formatKsh(order.organizerEarningsAmount || 0)}
                   </td>
-                  <td className="px-2 py-2">{order.status}</td>
+                  <td className="px-2 py-2">
+                    {order.paymentStatus === 'failed' ? (
+                      <div>
+                        <p className="font-medium text-destructive">
+                          Payment failed
+                        </p>
+                        <p className="max-w-xs text-xs text-muted-foreground">
+                          {order.resultDesc || 'Payment was not completed.'}
+                        </p>
+                      </div>
+                    ) : order.paymentStatus === 'pending' ? (
+                      <div>
+                        <p className="font-medium">Payment pending</p>
+                        <p className="text-xs text-muted-foreground">
+                          Fulfillment: {order.status}
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p>{order.status}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Payment paid
+                        </p>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

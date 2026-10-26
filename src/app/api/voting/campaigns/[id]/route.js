@@ -5,6 +5,7 @@ import connect from '@/app/utils/db';
 import { auth } from '@/app/auth';
 import VotingCampaign from '@/app/models/VotingCampaign';
 import VotingBallot from '@/app/models/VotingBallot';
+import Event from '@/app/models/Event';
 import Organizer from '@/app/models/Organizer';
 import { sendMailSafe } from '@/lib/mailer';
 import { sendSmsSafe } from '@/lib/sms';
@@ -148,7 +149,12 @@ export async function PATCH(req, { params }) {
     const nextStatus = isOrganizer
       ? 'pending'
       : String(body?.status || '').trim();
-    const commissionPercent = Number(body?.commissionPercent);
+    const requestedCommissionPercent =
+      body?.commissionPercent === undefined
+        ? null
+        : String(body.commissionPercent).trim() === ''
+          ? Number.NaN
+          : Number(body.commissionPercent);
     const publicVoteDisplay = normalizePublicVoteDisplay(
       body?.publicVoteDisplay
     );
@@ -160,23 +166,6 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    if (nextStatus === 'live') {
-      if (
-        !Number.isFinite(commissionPercent) ||
-        commissionPercent <= 0 ||
-        commissionPercent >= 100
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              'Commission percent must be between 1 and 99 before approving',
-          },
-          { status: 400 }
-        );
-      }
-    }
-
     await connect();
 
     const previousCampaign = await VotingCampaign.findById(id).lean();
@@ -184,6 +173,24 @@ export async function PATCH(req, { params }) {
       return NextResponse.json(
         { success: false, message: 'Campaign not found' },
         { status: 404 }
+      );
+    }
+
+    const commissionPercent =
+      requestedCommissionPercent ??
+      Number(previousCampaign.commissionPercent ?? 20);
+    if (
+      nextStatus === 'live' &&
+      (!Number.isFinite(commissionPercent) ||
+        commissionPercent < 0 ||
+        commissionPercent > 100)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Commission percent must be between 0 and 100.',
+        },
+        { status: 400 }
       );
     }
 
@@ -256,11 +263,11 @@ export async function PATCH(req, { params }) {
             : 'pending',
       commissionPercent: Number.isFinite(commissionPercent)
         ? commissionPercent
-        : undefined,
+        : previousCampaign.commissionPercent,
       publicVoteDisplay,
       organizerEarningsPercent: Number.isFinite(commissionPercent)
         ? Math.max(0, 100 - commissionPercent)
-        : undefined,
+        : previousCampaign.organizerEarningsPercent,
       publishedAt: nextStatus === 'live' ? new Date() : null,
     };
     if (requestedTicketEventId) {

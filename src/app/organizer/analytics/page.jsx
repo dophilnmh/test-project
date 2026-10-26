@@ -37,6 +37,9 @@ export default function OrganizerAnalyticsPage() {
     competitionRevenue: 0,
     competitionVotes: 0,
     paidCompetitionTransactions: 0,
+    merchandiseRevenue: 0,
+    paidMerchOrders: 0,
+    merchandiseUnits: 0,
     totalRevenue: 0,
     platformCommission: 0,
     organizerEarnings: 0,
@@ -90,6 +93,9 @@ export default function OrganizerAnalyticsPage() {
             competitionRevenue: 0,
             competitionVotes: 0,
             paidCompetitionTransactions: 0,
+            merchandiseRevenue: 0,
+            paidMerchOrders: 0,
+            merchandiseUnits: 0,
             totalRevenue: 0,
             platformCommission: 0,
             organizerEarnings: 0,
@@ -214,7 +220,7 @@ export default function OrganizerAnalyticsPage() {
               {formatKsh(stats.totalRevenue)}
             </p>
             <p className="text-xs text-muted-foreground">
-              All paid event transactions
+              Paid transactions for the selected source
             </p>
           </article>
           <article className="rounded-lg border border-border/70 bg-background/45 p-3">
@@ -245,6 +251,31 @@ export default function OrganizerAnalyticsPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {activeEvent?.sourceType === 'merchandise' ? (
+          <>
+            <article className="rounded-xl border border-border bg-card/80 p-4">
+              <Wallet className="h-4 w-4 text-primary" />
+              <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                Merchandise Revenue
+              </p>
+              <p className="text-2xl font-semibold text-foreground">
+                {formatKsh(stats.merchandiseRevenue)}
+              </p>
+            </article>
+            <article className="rounded-xl border border-border bg-card/80 p-4">
+              <Ticket className="h-4 w-4 text-accent" />
+              <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                Paid Shop Orders
+              </p>
+              <p className="text-2xl font-semibold text-foreground">
+                {stats.paidMerchOrders}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {stats.merchandiseUnits} items sold
+              </p>
+            </article>
+          </>
+        ) : null}
         <article className="rounded-xl border border-border bg-card/80 p-4">
           <Wallet className="h-4 w-4 text-primary" />
           <p className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -339,16 +370,48 @@ export default function OrganizerAnalyticsPage() {
 
       <section className="rounded-2xl border border-border bg-card/80 p-5">
         <h2 className="text-xl font-semibold text-foreground">
-          Transparent Revenue Split (Approved Events)
+          {activeEvent?.sourceType === 'merchandise'
+            ? 'Merchandise Shop Revenue Split'
+            : 'Transparent Revenue Split (Approved Events)'}
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Total Revenue -&gt; Platform Commission -&gt; Organizer Earnings -&gt;
-          Funds Available for Disbursement.
+          {activeEvent?.sourceType === 'merchandise'
+            ? 'Paid merchandise orders, platform commission, organizer earnings, and withdrawable proceeds for this shop.'
+            : 'Total Revenue -&gt; Platform Commission -&gt; Organizer Earnings -&gt; Funds Available for Disbursement.'}
         </p>
         {eventRevenueBreakdown.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No approved event revenue data yet.
-          </p>
+          activeEvent?.sourceType === 'merchandise' ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <p className="rounded-lg border border-border bg-background/45 p-3 text-sm text-muted-foreground">
+                Paid orders:{' '}
+                <span className="font-semibold text-foreground">
+                  {stats.paidMerchOrders}
+                </span>
+              </p>
+              <p className="rounded-lg border border-border bg-background/45 p-3 text-sm text-muted-foreground">
+                Items sold:{' '}
+                <span className="font-semibold text-foreground">
+                  {stats.merchandiseUnits}
+                </span>
+              </p>
+              <p className="rounded-lg border border-border bg-background/45 p-3 text-sm text-muted-foreground">
+                Organizer earnings:{' '}
+                <span className="font-semibold text-foreground">
+                  {formatKsh(stats.organizerEarnings)}
+                </span>
+              </p>
+              <p className="rounded-lg border border-border bg-background/45 p-3 text-sm text-muted-foreground">
+                Platform commission:{' '}
+                <span className="font-semibold text-destructive">
+                  {formatKsh(stats.platformCommission)}
+                </span>
+              </p>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">
+              No approved event revenue data yet.
+            </p>
+          )
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-220 text-left text-sm">

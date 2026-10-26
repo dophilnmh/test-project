@@ -4,8 +4,11 @@ import Organizer from '@/app/models/Organizer';
 import FundRequest from '@/app/models/FundRequest';
 import TicketOrder from '@/app/models/TicketOrder';
 import CompetitionVoteTransaction from '@/app/models/CompetitionVoteTransaction';
+import MerchOrder from '@/app/models/MerchOrder';
+import MerchProduct from '@/app/models/MerchProduct';
 import Event from '@/app/models/Event';
 import { auth } from '@/app/auth';
+import mongoose from 'mongoose';
 
 function normalizePhone(value) {
   const trimmed = String(value || '').replace(/\s+/g, '');
@@ -40,6 +43,26 @@ function computeVoteNetAmount(tx) {
   return Math.max(0, totalAmount - inferredCommission);
 }
 
+function computeMerchNetAmount(order) {
+  const amount = toNumber(order?.totalAmount || 0);
+  const explicitEarnings = toNumber(order?.organizerEarningsAmount, Number.NaN);
+  if (!Number.isNaN(explicitEarnings)) return Math.max(0, explicitEarnings);
+
+  const explicitCommission = toNumber(
+    order?.platformCommissionAmount,
+    Number.NaN
+  );
+  if (!Number.isNaN(explicitCommission)) {
+    return Math.max(0, amount - explicitCommission);
+  }
+
+  const commissionPercent = Math.min(
+    100,
+    Math.max(0, toNumber(order?.commissionPercent, 0))
+  );
+  return Math.max(0, amount - Math.round(amount * (commissionPercent / 100)));
+}
+
 export async function GET() {
   try {
     const session = await auth();
@@ -67,21 +90,31 @@ export async function GET() {
       .sort({ createdAt: -1 })
       .lean();
 
-    const paidOrders = await TicketOrder.find({
-      organizerId: organizer._id,
-      status: 'paid',
-    })
-      .select('totalAmount')
-      .lean();
-
-    const paidCompetitionTransactions = await CompetitionVoteTransaction.find({
-      organizerId: organizer._id,
-      status: 'paid',
-    })
-      .select(
-        'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
-      )
-      .lean();
+    const [paidOrders, paidCompetitionTransactions, paidMerchOrders] =
+      await Promise.all([
+        TicketOrder.find({
+          organizerId: organizer._id,
+          status: 'paid',
+        })
+          .select('totalAmount')
+          .lean(),
+        CompetitionVoteTransaction.find({
+          organizerId: organizer._id,
+          status: 'paid',
+        })
+          .select(
+            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
+          )
+          .lean(),
+        MerchOrder.find({
+          organizerId: organizer._id,
+          paymentStatus: 'paid',
+        })
+          .select(
+            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
+          )
+          .lean(),
+      ]);
 
     const ticketRevenue = paidOrders.reduce(
       (sum, item) => sum + toNumber(item?.totalAmount || 0),
@@ -91,7 +124,12 @@ export async function GET() {
       (sum, tx) => sum + computeVoteNetAmount(tx),
       0
     );
-    const organizerEarningsTotal = ticketRevenue + competitionOrganizerEarnings;
+    const merchandiseOrganizerEarnings = paidMerchOrders.reduce(
+      (sum, order) => sum + computeMerchNetAmount(order),
+      0
+    );
+    const organizerEarningsTotal =
+      ticketRevenue + competitionOrganizerEarnings + merchandiseOrganizerEarnings;
 
     const reservedStatuses = new Set([
       'pending',
@@ -153,30 +191,63 @@ export async function POST(req) {
     const amount = Math.max(0, Number(body?.amount || 0));
     const requestPurpose = String(body?.requestPurpose || '').trim();
     const eventId = String(body?.eventId || '').trim();
+    const sourceType =
+      String(body?.sourceType || 'event').trim().toLowerCase() ===
+      'merchandise'
+        ? 'merchandise'
+        : 'event';
+    const merchProductId = String(body?.merchProductId || '').trim();
 
-    if (!eventId) {
+    if (
+      (sourceType === 'event' && !eventId) ||
+      (sourceType === 'merchandise' && !merchProductId)
+    ) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Select which of your events these funds are for',
+          message: 'Select an approved event or merchandise shop for these funds',
         },
         { status: 400 }
       );
     }
 
-    const event = await Event.findOne({
-      _id: eventId,
-      organizerId: organizer._id,
-      status: 'approved',
-    })
-      .select('title')
-      .lean();
+    let event = null;
+    let merchProduct = null;
+    if (sourceType === 'event') {
+      if (!mongoose.Types.ObjectId.isValid(eventId)) {
+        return NextResponse.json(
+          { success: false, message: 'Select a valid approved event.' },
+          { status: 400 }
+        );
+      }
+      event = await Event.findOne({
+        _id: eventId,
+        organizerId: organizer._id,
+        status: 'approved',
+      })
+        .select('title')
+        .lean();
+    } else {
+      if (!mongoose.Types.ObjectId.isValid(merchProductId)) {
+        return NextResponse.json(
+          { success: false, message: 'Select a valid merchandise shop.' },
+          { status: 400 }
+        );
+      }
+      merchProduct = await MerchProduct.findOne({
+        _id: merchProductId,
+        organizerId: organizer._id,
+        approvalStatus: 'approved',
+      })
+        .select('name')
+        .lean();
+    }
 
-    if (!event) {
+    if (!event && !merchProduct) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Selected event was not found among your approved events',
+          message: 'Selected source was not found among your approved events or shops',
         },
         { status: 400 }
       );
@@ -200,7 +271,12 @@ export async function POST(req) {
       );
     }
 
-    const [paidOrders, paidCompetitionTransactions, existingRequests] =
+    const [
+      paidOrders,
+      paidCompetitionTransactions,
+      paidMerchOrders,
+      existingRequests,
+    ] =
       await Promise.all([
         TicketOrder.find({
           organizerId: organizer._id,
@@ -211,6 +287,14 @@ export async function POST(req) {
         CompetitionVoteTransaction.find({
           organizerId: organizer._id,
           status: 'paid',
+        })
+          .select(
+            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
+          )
+          .lean(),
+        MerchOrder.find({
+          organizerId: organizer._id,
+          paymentStatus: 'paid',
         })
           .select(
             'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
@@ -229,7 +313,12 @@ export async function POST(req) {
       (sum, tx) => sum + computeVoteNetAmount(tx),
       0
     );
-    const organizerEarningsTotal = ticketRevenue + competitionOrganizerEarnings;
+    const merchandiseOrganizerEarnings = paidMerchOrders.reduce(
+      (sum, order) => sum + computeMerchNetAmount(order),
+      0
+    );
+    const organizerEarningsTotal =
+      ticketRevenue + competitionOrganizerEarnings + merchandiseOrganizerEarnings;
 
     const reservedStatuses = new Set([
       'pending',
@@ -263,8 +352,10 @@ export async function POST(req) {
       organizerName: organizer.organizationName,
       organizerEmail: organizer.email,
       organizerPhone: organizer.phone,
-      eventId: event._id,
-      eventTitle: event.title,
+      eventId: event?._id || null,
+      sourceType,
+      merchProductId: merchProduct?._id || null,
+      eventTitle: event?.title || `Merchandise: ${merchProduct.name}`,
       mpesaNumber,
       accountName,
       amount,

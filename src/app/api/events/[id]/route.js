@@ -470,10 +470,17 @@ export async function PATCH(req, context) {
     const hasTierUpdate = Array.isArray(body?.tiers);
     const hasStatusUpdate = body?.status !== undefined;
     const hasTicketEventUpdate = body?.ticketEventId !== undefined;
+    const hasScheduleUpdate =
+      body?.startDateTime !== undefined || body?.endDateTime !== undefined;
     const nextStatus = String(body?.status || '').trim();
     const allowedStatus = ['pending', 'approved', 'rejected'];
 
-    if (!hasStatusUpdate && !hasTierUpdate && !hasTicketEventUpdate) {
+    if (
+      !hasStatusUpdate &&
+      !hasTierUpdate &&
+      !hasTicketEventUpdate &&
+      !hasScheduleUpdate
+    ) {
       return NextResponse.json(
         { success: false, message: 'No event changes were provided.' },
         { status: 400 }
@@ -591,11 +598,12 @@ export async function PATCH(req, context) {
 
       const submittedTiers = body.tiers;
       const names = new Set();
+      const matchedExistingTierNames = new Set();
       for (const tier of submittedTiers) {
         const name = slugTierName(tier?.name);
         const price = Number(tier?.price);
         const totalSlots = Math.floor(Number(tier?.totalSlots));
-        if (!name || names.has(name)) {
+        if (name.length < 2 || names.has(name)) {
           return NextResponse.json(
             {
               success: false,
@@ -605,6 +613,12 @@ export async function PATCH(req, context) {
           );
         }
         if (
+          tier?.price === undefined ||
+          tier?.price === null ||
+          String(tier.price).trim() === '' ||
+          tier?.totalSlots === undefined ||
+          tier?.totalSlots === null ||
+          String(tier.totalSlots).trim() === '' ||
           !Number.isFinite(price) ||
           price < 0 ||
           !Number.isFinite(totalSlots) ||
@@ -619,9 +633,28 @@ export async function PATCH(req, context) {
             { status: 400 }
           );
         }
-        const previousTier = (existing.tiers || []).find(
-          (item) => slugTierName(item.name) === name
+        const originalName = slugTierName(tier?.originalName);
+        const previousTier = (existing.tiers || []).find((item) =>
+          slugTierName(item.name) === (originalName || name)
         );
+        if (originalName && !previousTier) {
+          return NextResponse.json(
+            { success: false, message: 'A ticket type being edited no longer exists.' },
+            { status: 400 }
+          );
+        }
+        if (
+          previousTier &&
+          matchedExistingTierNames.has(slugTierName(previousTier.name))
+        ) {
+          return NextResponse.json(
+            { success: false, message: 'A ticket type cannot be edited more than once.' },
+            { status: 400 }
+          );
+        }
+        if (previousTier) {
+          matchedExistingTierNames.add(slugTierName(previousTier.name));
+        }
         const sold = previousTier
           ? Math.max(
               0,
@@ -652,8 +685,10 @@ export async function PATCH(req, context) {
 
       const updatedTiers = submittedTiers.map((tier) => {
         const name = slugTierName(tier.name);
+        const originalName = slugTierName(tier?.originalName);
         const previousTier = (existing.tiers || []).find(
-          (item) => slugTierName(item.name) === name
+          (item) =>
+            slugTierName(item.name) === (originalName || name)
         );
         const sold = previousTier
           ? Math.max(
@@ -673,10 +708,32 @@ export async function PATCH(req, context) {
         };
       });
       const retainedTiers = (existing.tiers || []).filter(
-        (tier) => !names.has(slugTierName(tier.name))
+        (tier) => !matchedExistingTierNames.has(slugTierName(tier.name))
       );
       existing.tiers = [...updatedTiers, ...retainedTiers];
       existing.markModified('tiers');
+    }
+
+    if (hasScheduleUpdate) {
+      const parsedStart = new Date(
+        body.startDateTime ?? existing.startDateTime
+      );
+      const parsedEnd = new Date(body.endDateTime ?? existing.endDateTime);
+      if (
+        Number.isNaN(parsedStart.getTime()) ||
+        Number.isNaN(parsedEnd.getTime()) ||
+        parsedEnd <= parsedStart
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'The event end date and time must be after the start date and time.',
+          },
+          { status: 400 }
+        );
+      }
+      existing.startDateTime = parsedStart;
+      existing.endDateTime = parsedEnd;
     }
 
     if (hasStatusUpdate) {
@@ -696,7 +753,9 @@ export async function PATCH(req, context) {
 
     return NextResponse.json({
       success: true,
-      message: `Event status updated to ${nextStatus}`,
+      message: hasStatusUpdate
+        ? `Event status updated to ${nextStatus}`
+        : 'Event updated successfully',
       event: existing,
     });
   } catch (error) {

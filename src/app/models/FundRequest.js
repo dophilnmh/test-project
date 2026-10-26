@@ -19,6 +19,18 @@ const fundRequestSchema = new Schema(
       default: null,
       index: true,
     },
+    sourceType: {
+      type: String,
+      enum: ['event', 'merchandise'],
+      default: 'event',
+      index: true,
+    },
+    merchProductId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MerchProduct',
+      default: null,
+      index: true,
+    },
     eventTitle: { type: String, default: '' },
     mpesaNumber: { type: String, required: true },
     accountName: { type: String, default: '' },

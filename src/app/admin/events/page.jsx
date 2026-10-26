@@ -209,6 +209,8 @@ export default function AdminEventsPage() {
   const [ticketTierError, setTicketTierError] = useState('');
   const [savingId, setSavingId] = useState('');
   const [savingTicketTiers, setSavingTicketTiers] = useState(false);
+  const [savingEventSchedule, setSavingEventSchedule] = useState(false);
+  const [eventScheduleError, setEventScheduleError] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [pagination, setPagination] = useState({
     page: 1,
@@ -327,6 +329,7 @@ export default function AdminEventsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tiers: tiers.map((tier) => ({
+            originalName: tier.originalName,
             name: tier.name,
             price: Number(tier.price),
             description: tier.description,
@@ -339,13 +342,50 @@ export default function AdminEventsPage() {
       if (!response.ok || !data?.success) {
         throw new Error(data?.message || 'Unable to update ticket tiers.');
       }
-      setSelectedEvent(data.event);
+      setSelectedEvent((current) =>
+        current
+          ? { ...current, ...data.event, organizerId: current.organizerId }
+          : data.event
+      );
       setTicketTierError('');
       await load();
+      return data.event;
     } catch (saveError) {
       setTicketTierError(saveError.message || 'Unable to update ticket tiers.');
+      return null;
     } finally {
       setSavingTicketTiers(false);
+    }
+  };
+
+  const saveEventSchedule = async (eventId, schedule) => {
+    setSavingEventSchedule(true);
+    setEventScheduleError('');
+    try {
+      const response = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDateTime: new Date(schedule.startDateTime).toISOString(),
+          endDateTime: new Date(schedule.endDateTime).toISOString(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || 'Unable to update event schedule.');
+      }
+      setSelectedEvent((current) =>
+        current
+          ? { ...current, ...data.event, organizerId: current.organizerId }
+          : data.event
+      );
+      await load();
+    } catch (saveError) {
+      setEventScheduleError(
+        saveError.message || 'Unable to update event schedule.'
+      );
+    } finally {
+      setSavingEventSchedule(false);
     }
   };
 
@@ -477,7 +517,7 @@ export default function AdminEventsPage() {
                   onClick={() => setSelectedEvent(event)}
                   className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold uppercase tracking-widest text-foreground hover:border-primary/50"
                 >
-                  View
+                  View / Edit
                 </button>
 
                 <select
@@ -536,6 +576,9 @@ export default function AdminEventsPage() {
         onSaveTicketTiers={saveTicketTiers}
         savingTicketTiers={savingTicketTiers}
         ticketTierError={ticketTierError}
+        onSaveEventSchedule={saveEventSchedule}
+        savingEventSchedule={savingEventSchedule}
+        eventScheduleError={eventScheduleError}
       />
 
       <div className="flex items-center justify-end gap-2">

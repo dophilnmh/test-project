@@ -159,6 +159,7 @@ function normalizeCompetitionMaxVotes(value) {
 
 export default function OrganizerDashboardPage() {
   const [events, setEvents] = useState([]);
+  const [merchandiseProducts, setMerchandiseProducts] = useState([]);
   const [availableEvents, setAvailableEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [activeEvent, setActiveEvent] = useState(null);
@@ -315,10 +316,14 @@ export default function OrganizerDashboardPage() {
       const query = selectedEventId
         ? `?scope=dashboard&eventId=${encodeURIComponent(selectedEventId)}`
         : '?scope=dashboard';
-      const response = await fetch(`/api/events/organizer${query}`, {
-        cache: 'no-store',
-      });
-      const data = await response.json();
+      const [response, productsResponse] = await Promise.all([
+        fetch(`/api/events/organizer${query}`, { cache: 'no-store' }),
+        fetch('/api/shop/products?scope=organizer', { cache: 'no-store' }),
+      ]);
+      const [data, productsData] = await Promise.all([
+        response.json(),
+        productsResponse.json(),
+      ]);
       if (response.ok && data?.success) {
         setEvents(data.events || []);
         const options = Array.isArray(data.availableEvents)
@@ -349,13 +354,20 @@ export default function OrganizerDashboardPage() {
             ? data.ticketSalesByContestant
             : []
         );
+      } else {
+        setError(data?.message || 'Unable to load organizer dashboard data.');
+      }
+      if (productsResponse.ok && productsData?.success) {
+        setMerchandiseProducts(
+          Array.isArray(productsData.products) ? productsData.products : []
+        );
+      } else {
+        setError(
+          productsData?.message || 'Unable to load your merchandise shops.'
+        );
       }
     } catch {
-      // no-op for now
-      setAvailableEvents([]);
-      setActiveEvent(null);
-      setCompetitionAnalytics({ byContestant: [] });
-      setOrganizerTicketSales([]);
+      setError('Unable to load organizer dashboard data.');
     }
   }, [selectedEventId]);
 
@@ -1240,10 +1252,11 @@ export default function OrganizerDashboardPage() {
     const accountName = String(fundRequestForm.accountName || '').trim();
     const amount = Math.max(0, Number(fundRequestForm.amount || 0));
     const requestPurpose = String(fundRequestForm.requestPurpose || '').trim();
-    const eventId = String(fundRequestForm.eventId || '').trim();
+    const selectedSource = String(fundRequestForm.eventId || '').trim();
+    const [sourceType, sourceId] = selectedSource.split(':', 2);
 
-    if (!eventId) {
-      setError('Select which event these funds are for.');
+    if (!sourceType || !sourceId) {
+      setError('Select which event or merchandise shop these funds are for.');
       setSubmittingFundRequest(false);
       return;
     }
@@ -1275,7 +1288,10 @@ export default function OrganizerDashboardPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          eventId,
+          sourceType: sourceType === 'merch' ? 'merchandise' : 'event',
+          ...(sourceType === 'merch'
+            ? { merchProductId: sourceId }
+            : { eventId: sourceId }),
           mpesaNumber,
           accountName,
           amount,
@@ -3754,7 +3770,7 @@ export default function OrganizerDashboardPage() {
               <form className="mt-5 space-y-3" onSubmit={submitFundRequest}>
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Which event are these funds for?
+                    Which event or merchandise shop are these funds for?
                   </label>
                   <select
                     className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -3771,16 +3787,35 @@ export default function OrganizerDashboardPage() {
                     {events
                       .filter((item) => item.status === 'approved')
                       .map((item) => (
-                        <option key={item._id} value={item._id}>
-                          {item.title}
+                        <option key={`event:${item._id}`} value={`event:${item._id}`}>
+                          {item.title} (
+                          {item.eventType === 'competition'
+                            ? 'Competition'
+                            : 'Ticketing'}
+                          )
+                        </option>
+                      ))}
+                    {merchandiseProducts
+                      .filter(
+                        (item) =>
+                          item.approvalStatus === 'approved' &&
+                          item.status !== 'archived'
+                      )
+                      .map((item) => (
+                        <option key={`merch:${item._id}`} value={`merch:${item._id}`}>
+                          Merchandise shop: {item.name}
                         </option>
                       ))}
                   </select>
                   {events.filter((item) => item.status === 'approved')
-                    .length === 0 ? (
+                    .length === 0 &&
+                  merchandiseProducts.filter(
+                    (item) =>
+                      item.approvalStatus === 'approved' &&
+                      item.status !== 'archived'
+                  ).length === 0 ? (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      No approved events yet. Funds can only be requested
-                      against an approved event.
+                      No approved events or merchandise shops available.
                     </p>
                   ) : null}
                 </div>

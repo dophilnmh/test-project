@@ -16,6 +16,7 @@ export default function AdminVotingPage() {
   const [feedback, setFeedback] = useState('');
   const [copiedTicketLink, setCopiedTicketLink] = useState('');
   const [creating, setCreating] = useState(false);
+  const [savingCampaignId, setSavingCampaignId] = useState('');
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [pollPage, setPollPage] = useState(1);
@@ -132,28 +133,43 @@ export default function AdminVotingPage() {
     ticketEventId
   ) => {
     setFeedback('');
-    if (status === 'live' && !ticketEventId) {
+    const campaign = campaigns.find(
+      (item) => String(item._id) === String(campaignId)
+    );
+    const selectedTicketEventId =
+      ticketEventId ??
+      ticketEventSelections[campaignId] ??
+      String(campaign?.eventId || '');
+    const selectedCommissionPercent =
+      commissionPercent ?? campaign?.commissionPercent ?? 20;
+    if (status === 'live' && !selectedTicketEventId) {
       setFeedback('Select an approved ticket event before approving this poll.');
       return;
     }
 
-    const response = await fetch(`/api/voting/campaigns/${campaignId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status,
-        commissionPercent,
-        publicVoteDisplay,
-        ticketEventId,
-      }),
-    });
+    setSavingCampaignId(String(campaignId));
+    try {
+      const response = await fetch(`/api/voting/campaigns/${campaignId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          commissionPercent: selectedCommissionPercent,
+          publicVoteDisplay,
+          ticketEventId: selectedTicketEventId,
+        }),
+      });
 
-    const data = await response.json();
-    if (response.ok && data?.success) {
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || 'Unable to update campaign');
+      }
       setFeedback(data.message || 'Campaign updated');
-      loadCampaigns();
-    } else {
-      setFeedback(data.message || 'Unable to update campaign');
+      await loadCampaigns();
+    } catch (updateError) {
+      setFeedback(updateError.message || 'Unable to update campaign');
+    } finally {
+      setSavingCampaignId('');
     }
   };
 
@@ -332,7 +348,7 @@ export default function AdminVotingPage() {
       status: campaign.status || 'draft',
       resultVisibility: campaign.resultVisibility || 'live',
       publicVoteDisplay: campaign.publicVoteDisplay || 'count',
-      commissionPercent: campaign.commissionPercent || 20,
+      commissionPercent: campaign.commissionPercent ?? 20,
       nominees: (campaign.nominees || campaign.contestants || []).map(
         (item) => ({
           _id: String(item._id || ''),
@@ -613,15 +629,16 @@ export default function AdminVotingPage() {
 
               <input
                 type="number"
-                min="1"
-                max="99"
+                min="0"
+                max="100"
                 className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 placeholder="Platform commission %"
                 value={form.commissionPercent}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    commissionPercent: Number(e.target.value || 20),
+                    commissionPercent:
+                      e.target.value === '' ? '' : Number(e.target.value),
                   }))
                 }
               />
@@ -851,14 +868,13 @@ export default function AdminVotingPage() {
                               updateCampaignStatus(
                                 campaign._id,
                                 status,
-                                status === 'live'
-                                  ? form.commissionPercent
-                                  : undefined,
+                                campaign.commissionPercent ?? 20,
                                 campaign.publicVoteDisplay || 'count',
                                 ticketEventSelections[campaign._id] ||
                                   String(campaign.eventId || '')
                               )
                             }
+                            disabled={savingCampaignId === String(campaign._id)}
                             className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:border-primary/60"
                           >
                             {status}
@@ -871,10 +887,13 @@ export default function AdminVotingPage() {
                             updateCampaignStatus(
                               campaign._id,
                               campaign.status,
-                              campaign.commissionPercent,
-                              e.target.value
+                              campaign.commissionPercent ?? 20,
+                              e.target.value,
+                              ticketEventSelections[campaign._id] ||
+                                String(campaign.eventId || '')
                             )
                           }
+                          disabled={savingCampaignId === String(campaign._id)}
                         >
                           <option value="count">Numerical Votes</option>
                           <option value="percent">Percentage (%)</option>

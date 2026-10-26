@@ -23,6 +23,7 @@ export default function AdminShopPage() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const [selectedImages, setSelectedImages] = useState([]);
   const [copiedProductId, setCopiedProductId] = useState('');
+  const [commissionDrafts, setCommissionDrafts] = useState({});
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -44,7 +45,18 @@ export default function AdminShopPage() {
       const ordersData = await ordersResponse.json();
 
       if (productsResponse.ok && productsData?.success) {
-        setProducts(productsData.products || []);
+        const loadedProducts = productsData.products || [];
+        setProducts(loadedProducts);
+        setCommissionDrafts((previous) => {
+          const next = { ...previous };
+          for (const product of loadedProducts) {
+            const productId = String(product._id);
+            if (next[productId] === undefined) {
+              next[productId] = String(product.commissionPercent ?? 0);
+            }
+          }
+          return next;
+        });
       }
 
       if (ordersResponse.ok && ordersData?.success) {
@@ -156,6 +168,21 @@ export default function AdminShopPage() {
   };
 
   const reviewProduct = async (productId, approvalStatus) => {
+    if (approvalStatus === 'approved') {
+      const commissionPercent = Number(commissionDrafts[String(productId)]);
+      if (
+        !String(commissionDrafts[String(productId)] ?? '').trim() ||
+        !Number.isFinite(commissionPercent) ||
+        commissionPercent < 0 ||
+        commissionPercent > 100
+      ) {
+        setFeedback('Enter a commission percentage from 0 to 100.');
+        return;
+      }
+      await updateProduct(productId, { approvalStatus, commissionPercent });
+      return;
+    }
+
     let approvalNote = '';
     if (approvalStatus === 'rejected') {
       approvalNote = window.prompt('Enter rejection reason') || '';
@@ -358,6 +385,7 @@ export default function AdminShopPage() {
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3">Approval</th>
                 <th className="px-2 py-3">Share Link</th>
+                <th className="px-2 py-3">NimblyPolls commission (%)</th>
                 <th className="px-2 py-3">Actions</th>
               </tr>
             </thead>
@@ -393,6 +421,26 @@ export default function AdminShopPage() {
                         ? 'Copied'
                         : 'Copy link'}
                     </button>
+                  </td>
+                  <td className="px-2 py-3">
+                    <label className="flex items-center gap-1.5 whitespace-nowrap">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        aria-label={`NimblyPolls commission percentage for ${product.name}`}
+                        value={commissionDrafts[String(product._id)] ?? ''}
+                        onChange={(event) =>
+                          setCommissionDrafts((previous) => ({
+                            ...previous,
+                            [String(product._id)]: event.target.value,
+                          }))
+                        }
+                        className="w-20 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                      />
+                      <span>%</span>
+                    </label>
                   </td>
                   <td className="px-2 py-3">
                     <div className="flex flex-wrap gap-2">

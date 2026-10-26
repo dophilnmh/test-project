@@ -30,7 +30,12 @@ export async function POST(request) {
         buyerEmail: session.user.email,
         paymentStatus: 'pending',
       },
-      { $set: { paymentStatus: 'failed' } },
+      {
+        $set: {
+          paymentStatus: 'failed',
+          resultDesc: 'Card checkout was cancelled by the purchaser.',
+        },
+      },
       { new: true }
     );
     if (order) {

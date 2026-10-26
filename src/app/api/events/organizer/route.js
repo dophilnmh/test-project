@@ -5,6 +5,8 @@ import Organizer from '@/app/models/Organizer';
 import TicketOrder from '@/app/models/TicketOrder';
 import CompetitionVoteTransaction from '@/app/models/CompetitionVoteTransaction';
 import FundRequest from '@/app/models/FundRequest';
+import MerchProduct from '@/app/models/MerchProduct';
+import MerchOrder from '@/app/models/MerchOrder';
 import { auth } from '@/app/auth';
 
 function toObjectIdList(items) {
@@ -96,6 +98,9 @@ export async function GET(req) {
     const selectedEventId = String(
       req?.nextUrl?.searchParams?.get('eventId') || ''
     ).trim();
+    const selectedMerchProductId = selectedEventId.startsWith('merch:')
+      ? selectedEventId.slice('merch:'.length)
+      : '';
     const now = Date.now();
 
     const allEvents = await Event.find({ organizerId: organizer._id })
@@ -117,7 +122,7 @@ export async function GET(req) {
           ? approvedEvents
           : allEvents;
 
-    const availableEvents = scopedEvents.map((event) => ({
+    const eventOptions = scopedEvents.map((event) => ({
       eventId: String(event?._id || ''),
       title: String(event?.title || 'Untitled event'),
       eventType: String(event?.eventType || 'ticketing'),
@@ -126,12 +131,33 @@ export async function GET(req) {
       endDateTime: event?.endDateTime || null,
     }));
 
+    const merchProducts =
+      scope === 'analytics'
+        ? await MerchProduct.find({
+            organizerId: organizer._id,
+            approvalStatus: 'approved',
+          })
+            .select('_id name eventId')
+            .sort({ createdAt: -1 })
+            .lean()
+        : [];
+    const merchProductOptions = merchProducts.map((product) => ({
+      eventId: `merch:${String(product._id)}`,
+      title: `Merchandise shop: ${product.name}`,
+      eventType: 'merchandise',
+      sourceType: 'merchandise',
+      status: 'approved',
+      productId: String(product._id),
+    }));
+    const availableEvents = [...eventOptions, ...merchProductOptions];
     const hasSelectedEvent = Boolean(selectedEventId);
-    const scopedToSelectedEvents = hasSelectedEvent
+    const scopedToSelectedEvents = hasSelectedEvent && !selectedMerchProductId
       ? scopedEvents.filter(
           (event) => String(event?._id || '') === selectedEventId
         )
-      : scopedEvents;
+      : selectedMerchProductId
+        ? []
+        : scopedEvents;
 
     const activeEvent = hasSelectedEvent
       ? availableEvents.find((event) => event.eventId === selectedEventId) ||
@@ -140,6 +166,11 @@ export async function GET(req) {
 
     const scopedEventIds = toObjectIdList(scopedToSelectedEvents);
     const useScopedEventFilter = scope === 'dashboard' || scope === 'analytics';
+    const selectedMerchProduct = selectedMerchProductId
+      ? merchProducts.find(
+          (product) => String(product._id) === selectedMerchProductId
+        )
+      : null;
 
     const ticketFilter = {
       organizerId: organizer._id,
@@ -158,6 +189,7 @@ export async function GET(req) {
       referralOrders,
       paidCompetitionTransactions,
       fundRequests,
+      paidMerchOrders,
     ] = await Promise.all([
       useScopedEventFilter && scopedEventIds.length === 0
         ? []
@@ -187,6 +219,15 @@ export async function GET(req) {
         .select('amount status')
         .lean()
         .maxTimeMS(15000),
+      useScopedEventFilter && selectedMerchProduct
+        ? MerchOrder.find({
+            organizerId: organizer._id,
+            productId: selectedMerchProduct._id,
+            paymentStatus: 'paid',
+          })
+            .lean()
+            .maxTimeMS(15000)
+        : [],
     ]);
 
     const collectedFunds = paidOrders.reduce(
@@ -315,13 +356,38 @@ export async function GET(req) {
       },
       0
     );
+    const merchandiseRevenue = paidMerchOrders.reduce(
+      (sum, order) => sum + Math.max(0, toNumber(order?.totalAmount || 0)),
+      0
+    );
+    const merchandisePlatformCommission = paidMerchOrders.reduce(
+      (sum, order) => sum + Math.max(0, toNumber(order?.platformCommissionAmount || 0)),
+      0
+    );
+    const merchandiseOrganizerEarnings = paidMerchOrders.reduce(
+      (sum, order) => {
+        const total = Math.max(0, toNumber(order?.totalAmount || 0));
+        const explicit = toNumber(order?.organizerEarningsAmount, Number.NaN);
+        const commission = Math.max(
+          0,
+          toNumber(order?.platformCommissionAmount, 0)
+        );
+        return sum + (Number.isNaN(explicit) ? Math.max(0, total - commission) : explicit);
+      },
+      0
+    );
 
     const ticketRevenue = collectedFunds;
-    const totalRevenue = ticketRevenue + competitionRevenue;
+    const totalRevenue =
+      ticketRevenue + competitionRevenue + merchandiseRevenue;
     const platformCommissionTotal =
-      ticketPlatformCommission + competitionPlatformCommission;
+      ticketPlatformCommission +
+      competitionPlatformCommission +
+      merchandisePlatformCommission;
     const organizerEarningsTotal =
-      ticketOrganizerEarnings + competitionOrganizerEarnings;
+      ticketOrganizerEarnings +
+      competitionOrganizerEarnings +
+      merchandiseOrganizerEarnings;
 
     const reservedStatuses = new Set([
       'pending',
@@ -522,6 +588,12 @@ export async function GET(req) {
         competitionRevenue,
         competitionVotes,
         paidCompetitionTransactions: paidCompetitionTransactions.length,
+        merchandiseRevenue,
+        paidMerchOrders: paidMerchOrders.length,
+        merchandiseUnits: paidMerchOrders.reduce(
+          (sum, order) => sum + Math.max(0, toNumber(order?.quantity || 0)),
+          0
+        ),
         totalRevenue,
         platformCommission: platformCommissionTotal,
         organizerEarnings: organizerEarningsTotal,
