@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Event from '@/app/models/Event';
 import { NextResponse } from 'next/server';
 import connect from '@/app/utils/db';
@@ -61,17 +62,40 @@ export async function GET(req) {
 
     await connect();
 
+    const organizerId = req.nextUrl.searchParams.get('organizerId');
+    let organizerName = '';
+    if (organizerId) {
+      if (!mongoose.Types.ObjectId.isValid(organizerId)) {
+        return NextResponse.json(
+          { success: false, message: 'Invalid shop link' },
+          { status: 400 }
+        );
+      }
+
+      const organizer = await Organizer.findById(organizerId)
+        .select('organizationName')
+        .lean();
+      if (!organizer) {
+        return NextResponse.json(
+          { success: false, message: 'Shop not found' },
+          { status: 404 }
+        );
+      }
+      organizerName = organizer.organizationName || '';
+    }
+
     const filter = {
       status: 'active',
       approvalStatus: 'approved',
       stock: { $gt: 0 },
+      ...(organizerId ? { organizerId } : {}),
     };
 
     const products = await MerchProduct.find(filter)
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json({ success: true, products });
+    return NextResponse.json({ success: true, products, organizerName });
   } catch (error) {
     return NextResponse.json(
       {

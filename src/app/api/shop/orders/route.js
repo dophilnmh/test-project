@@ -78,10 +78,10 @@ export async function POST(req) {
     const productId = String(body?.productId || '').trim();
     const quantity = Math.max(1, Math.floor(Number(body?.quantity || 1)));
     const buyerPhone = String(body?.buyerPhone || '').trim();
-    const deliveryLocation = String(body?.deliveryLocation || '').trim();
+    const deliveryLocation = String(body?.deliveryLocation ?? '');
     const notes = String(body?.notes || '').trim();
 
-    if (!productId || !deliveryLocation) {
+    if (!productId || !deliveryLocation.trim()) {
       return NextResponse.json(
         {
           success: false,

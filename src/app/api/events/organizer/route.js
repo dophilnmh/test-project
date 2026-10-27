@@ -216,7 +216,7 @@ export async function GET(req) {
             .lean()
             .maxTimeMS(15000),
       FundRequest.find({ organizerId: organizer._id })
-        .select('amount status')
+        .select('amount transactionCost status')
         .lean()
         .maxTimeMS(15000),
       useScopedEventFilter && selectedMerchProduct
@@ -396,17 +396,35 @@ export async function GET(req) {
     ]);
     const reservedDisbursementAmount = fundRequests
       .filter((item) => reservedStatuses.has(String(item?.status || '')))
-      .reduce((sum, item) => sum + toNumber(item?.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          toNumber(item?.amount || 0) +
+          toNumber(item?.transactionCost || 0),
+        0
+      );
     const approvedDisbursementAmount = fundRequests
       .filter((item) => String(item?.status || '') === 'approved')
-      .reduce((sum, item) => sum + toNumber(item?.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          toNumber(item?.amount || 0) +
+          toNumber(item?.transactionCost || 0),
+        0
+      );
     const pendingDisbursementAmount = fundRequests
       .filter((item) =>
         ['pending', 'pending_email_approval'].includes(
           String(item?.status || '')
         )
       )
-      .reduce((sum, item) => sum + toNumber(item?.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          toNumber(item?.amount || 0) +
+          toNumber(item?.transactionCost || 0),
+        0
+      );
 
     const fundsAvailableForDisbursement = Math.max(
       0,

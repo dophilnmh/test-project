@@ -205,7 +205,7 @@ export default function OrganizerAnalyticsPage() {
       </header>
 
       <section
-        aria-label="Sales and transaction cost summary"
+        aria-label="Sales, platform commission, and disbursement summary"
         className="rounded-xl border border-border bg-card/80 p-4 md:p-5"
       >
         <h2 className="text-sm font-semibold text-foreground">
@@ -225,26 +225,26 @@ export default function OrganizerAnalyticsPage() {
           </article>
           <article className="rounded-lg border border-border/70 bg-background/45 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Transaction Cost
+              Platform Commission
             </p>
             <p className="mt-1 text-xl font-bold text-destructive">
               {formatKsh(stats.platformCommission)}
             </p>
             <p className="text-xs text-muted-foreground">
-              Fees from paid transactions
+              Commission set for paid transactions
             </p>
           </article>
           <article className="rounded-lg border border-success/30 bg-success/5 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Withdrawable Amount
+              Amount Available for Disbursement
             </p>
             <p className="mt-1 text-xl font-bold text-success">
               {formatKsh(
-                Math.max(0, stats.totalRevenue - stats.platformCommission)
+                stats.fundsAvailableForDisbursement
               )}
             </p>
             <p className="text-xs text-muted-foreground">
-              Total sales minus transaction cost
+              Organizer earnings less reserved disbursements
             </p>
           </article>
         </div>

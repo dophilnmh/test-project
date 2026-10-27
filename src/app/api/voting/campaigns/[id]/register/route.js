@@ -73,9 +73,18 @@ export async function POST(request, { params }) {
     const body = await request.json();
     const name = String(body?.name || '').trim();
     const category = String(body?.category || '').trim();
-    if (name.length < 2 || name.length > 80 || category.length < 2) {
+    const imageUrl = String(body?.imageUrl || '').trim();
+    if (
+      name.length < 2 ||
+      name.length > 80 ||
+      category.length < 2 ||
+      !imageUrl
+    ) {
       return NextResponse.json(
-        { success: false, message: 'Enter your name and select a category.' },
+        {
+          success: false,
+          message: 'Enter your name, select a category, and upload a photo.',
+        },
         { status: 400 }
       );
     }
@@ -139,7 +148,7 @@ export async function POST(request, { params }) {
       name,
       category: categoryName,
       tagline: '',
-      imageUrl: '',
+      imageUrl,
       voteCount: 0,
     });
     campaign.contestants = nextContestants;

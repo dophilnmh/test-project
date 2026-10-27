@@ -9,6 +9,7 @@ import { sendMailSafe } from '@/lib/mailer';
 import { sendSmsSafe } from '@/lib/sms';
 import { normalizeCompetitionCategories } from '@/lib/competitionCategories';
 import { parseCompetitionTicketReferral } from '@/lib/ticketReferral';
+import { parseDateTime } from '@/lib/dateTime';
 
 function slugTierName(name) {
   return String(name || '')
@@ -400,13 +401,13 @@ export async function POST(req) {
       );
     }
 
-    const parsedStart = new Date(startDateTime);
-    const parsedEnd = new Date(endDateTime);
+    const parsedStart = parseDateTime(startDateTime);
+    const parsedEnd = parseDateTime(endDateTime);
     const now = new Date();
 
     if (
-      Number.isNaN(parsedStart.getTime()) ||
-      Number.isNaN(parsedEnd.getTime())
+      !parsedStart ||
+      !parsedEnd
     ) {
       return NextResponse.json(
         { success: false, message: 'Invalid event date or time format' },

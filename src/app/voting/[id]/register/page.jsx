@@ -2,7 +2,9 @@
 
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Layout } from '@/components/layout/Layout';
+import { ImageCropUploadField } from '@/components/ui/ImageCropUploadField';
 
 export default function PollContestantRegistrationPage() {
   const params = useParams();
@@ -10,8 +12,10 @@ export default function PollContestantRegistrationPage() {
   const [campaign, setCampaign] = useState(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -47,18 +51,48 @@ export default function PollContestantRegistrationPage() {
     if (campaignId) loadPoll();
   }, [campaignId]);
 
+  const uploadPhoto = async (file) => {
+    setUploadingPhoto(true);
+    setError('');
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch('/api/uploads/nominee-photo', {
+        method: 'POST',
+        body,
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success || !data?.imageUrl) {
+        setError(data?.message || 'Unable to upload photo.');
+        return false;
+      }
+      setImageUrl(data.imageUrl);
+      return true;
+    } catch {
+      setError('Photo upload failed. Please try again.');
+      return false;
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setSubmitting(true);
     setMessage('');
     setError('');
+    if (!imageUrl) {
+      setError('Please upload your photo before submitting.');
+      setSubmitting(false);
+      return;
+    }
     try {
       const response = await fetch(
         `/api/voting/campaigns/${encodeURIComponent(campaignId)}/register`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, category }),
+          body: JSON.stringify({ name, category, imageUrl }),
         }
       );
       const data = await response.json();
@@ -68,6 +102,7 @@ export default function PollContestantRegistrationPage() {
       }
       setMessage(data.message || 'Registration submitted.');
       setName('');
+      setImageUrl('');
     } catch {
       setError('Registration failed. Please try again.');
     } finally {
@@ -129,6 +164,33 @@ export default function PollContestantRegistrationPage() {
                   ))}
                 </select>
               </label>
+              <div>
+                <ImageCropUploadField
+                  label="Upload photo"
+                  helperText={
+                    uploadingPhoto
+                      ? 'Uploading photo...'
+                      : 'Choose and position a clear photo before submitting.'
+                  }
+                  disabled={uploadingPhoto || submitting}
+                  onCroppedFile={uploadPhoto}
+                />
+                {imageUrl ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Image
+                      src={imageUrl}
+                      alt="Registration photo preview"
+                      width={64}
+                      height={64}
+                      unoptimized
+                      className="h-16 w-16 rounded-full border-2 border-primary object-cover"
+                    />
+                    <span className="text-xs text-success">
+                      Photo uploaded and ready.
+                    </span>
+                  </div>
+                ) : null}
+              </div>
 
               {campaign.categories.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -148,7 +210,12 @@ export default function PollContestantRegistrationPage() {
 
               <button
                 type="submit"
-                disabled={submitting || campaign.categories.length === 0}
+                disabled={
+                  submitting ||
+                  uploadingPhoto ||
+                  campaign.categories.length === 0 ||
+                  !imageUrl
+                }
                 className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? 'Submitting...' : 'Submit registration'}

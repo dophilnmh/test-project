@@ -5,6 +5,7 @@ import Event from '@/app/models/Event';
 import { normalizeCompetitionCategories } from '@/lib/competitionCategories';
 import Organizer from '@/app/models/Organizer';
 import { auth } from '@/app/auth';
+import { parseDateTime } from '@/lib/dateTime';
 
 function slugTierName(name) {
   return String(name || '')
@@ -286,13 +287,13 @@ export async function PUT(req, context) {
       );
     }
 
-    const parsedStart = new Date(startDateTime);
-    const parsedEnd = new Date(endDateTime);
+    const parsedStart = parseDateTime(startDateTime);
+    const parsedEnd = parseDateTime(endDateTime);
     const now = new Date();
 
     if (
-      Number.isNaN(parsedStart.getTime()) ||
-      Number.isNaN(parsedEnd.getTime())
+      !parsedStart ||
+      !parsedEnd
     ) {
       return NextResponse.json(
         { success: false, message: 'Invalid event date or time format' },
@@ -715,13 +716,15 @@ export async function PATCH(req, context) {
     }
 
     if (hasScheduleUpdate) {
-      const parsedStart = new Date(
+      const parsedStart = parseDateTime(
         body.startDateTime ?? existing.startDateTime
       );
-      const parsedEnd = new Date(body.endDateTime ?? existing.endDateTime);
+      const parsedEnd = parseDateTime(
+        body.endDateTime ?? existing.endDateTime
+      );
       if (
-        Number.isNaN(parsedStart.getTime()) ||
-        Number.isNaN(parsedEnd.getTime()) ||
+        !parsedStart ||
+        !parsedEnd ||
         parsedEnd <= parsedStart
       ) {
         return NextResponse.json(

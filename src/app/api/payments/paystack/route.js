@@ -31,7 +31,10 @@ export async function POST(request) {
     const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
     if (!secretKey) {
       return NextResponse.json(
-        { success: false, message: 'Card payments are not configured yet.' },
+        {
+          success: false,
+          message: 'Missing required environment variable: PAYSTACK_SECRET_KEY',
+        },
         { status: 503 }
       );
     }
@@ -222,22 +225,13 @@ export async function POST(request) {
 
     if (paymentType === 'merchandise' || paymentType === 'merch') {
       const session = await auth();
-      if (!session?.user?.email || session.user.email.toLowerCase() !== email) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: 'Sign in with the email used for checkout.',
-          },
-          { status: 401 }
-        );
-      }
       const productId = String(body.productId || '').trim();
       const productQuantity = Math.max(
         1,
         Math.floor(Number(body.quantity || 1))
       );
-      const deliveryLocation = String(body.deliveryLocation || '').trim();
-      if (!productId || !deliveryLocation) {
+      const deliveryLocation = String(body.deliveryLocation ?? '');
+      if (!productId || !deliveryLocation.trim()) {
         return NextResponse.json(
           {
             success: false,
@@ -318,7 +312,7 @@ export async function POST(request) {
         ),
         currency: 'KSH',
         buyerEmail: email,
-        buyerName: session.user.name || '',
+        buyerName: session?.user?.name || '',
         buyerPhone: phone,
         deliveryLocation,
         notes: String(body.notes || '').trim(),
@@ -554,7 +548,10 @@ export async function POST(request) {
   } catch (error) {
     console.error('Paystack checkout initialization failed:', error);
     return NextResponse.json(
-      { success: false, message: 'Unable to start card checkout.' },
+      {
+        success: false,
+        message: error?.message || 'Unable to start card checkout.',
+      },
       { status: 500 }
     );
   }

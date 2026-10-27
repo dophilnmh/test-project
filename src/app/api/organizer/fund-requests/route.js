@@ -26,41 +26,84 @@ function toNumber(value, fallback = 0) {
 function computeVoteNetAmount(tx) {
   const totalAmount = toNumber(tx?.totalAmount || 0);
   const explicitEarnings = toNumber(tx?.organizerEarningsAmount, Number.NaN);
-  if (!Number.isNaN(explicitEarnings)) return Math.max(0, explicitEarnings);
-
   const explicitCommission = toNumber(tx?.platformCommissionAmount, Number.NaN);
-  if (!Number.isNaN(explicitCommission)) {
-    return Math.max(0, totalAmount - explicitCommission);
-  }
-
   const commissionPercent = Math.min(
     100,
     Math.max(0, toNumber(tx?.commissionPercent, 20))
   );
-  const inferredCommission = Math.round(
-    totalAmount * (commissionPercent / 100)
+  const commission =
+    Number.isNaN(explicitCommission) ||
+    (explicitCommission === 0 && commissionPercent > 0)
+      ? Math.round(totalAmount * (commissionPercent / 100))
+      : explicitCommission;
+  const fallbackEarnings = Math.max(0, totalAmount - commission);
+
+  return Math.max(
+    0,
+    Number.isNaN(explicitEarnings) ||
+      (explicitEarnings === 0 &&
+        fallbackEarnings > 0 &&
+        commissionPercent < 100)
+      ? fallbackEarnings
+      : explicitEarnings
   );
-  return Math.max(0, totalAmount - inferredCommission);
 }
 
 function computeMerchNetAmount(order) {
   const amount = toNumber(order?.totalAmount || 0);
   const explicitEarnings = toNumber(order?.organizerEarningsAmount, Number.NaN);
-  if (!Number.isNaN(explicitEarnings)) return Math.max(0, explicitEarnings);
-
   const explicitCommission = toNumber(
     order?.platformCommissionAmount,
     Number.NaN
   );
-  if (!Number.isNaN(explicitCommission)) {
-    return Math.max(0, amount - explicitCommission);
-  }
-
   const commissionPercent = Math.min(
     100,
     Math.max(0, toNumber(order?.commissionPercent, 0))
   );
-  return Math.max(0, amount - Math.round(amount * (commissionPercent / 100)));
+  const commission =
+    Number.isNaN(explicitCommission) ||
+    (explicitCommission === 0 && commissionPercent > 0)
+      ? Math.round(amount * (commissionPercent / 100))
+      : explicitCommission;
+  const fallbackEarnings = Math.max(0, amount - commission);
+
+  return Math.max(
+    0,
+    Number.isNaN(explicitEarnings) ||
+      (explicitEarnings === 0 &&
+        fallbackEarnings > 0 &&
+        commissionPercent < 100)
+      ? fallbackEarnings
+      : explicitEarnings
+  );
+}
+
+function computePlatformCommissionAmount(transaction) {
+  const totalAmount = Math.max(0, toNumber(transaction?.totalAmount || 0));
+  const explicitCommission = toNumber(
+    transaction?.platformCommissionAmount,
+    Number.NaN
+  );
+  const commissionPercent = Math.min(
+    100,
+    Math.max(0, toNumber(transaction?.commissionPercent, 20))
+  );
+  const commissionFromRate = Math.round(
+    totalAmount * (commissionPercent / 100)
+  );
+
+  return Math.max(
+    0,
+    Number.isNaN(explicitCommission) ||
+      (explicitCommission === 0 && commissionFromRate > 0)
+      ? commissionFromRate
+      : explicitCommission
+  );
+}
+
+function computeTicketNetAmount(order) {
+  const amount = Math.max(0, toNumber(order?.totalAmount || 0));
+  return Math.max(0, amount - computePlatformCommissionAmount(order));
 }
 
 export async function GET() {
@@ -96,28 +139,24 @@ export async function GET() {
           organizerId: organizer._id,
           status: 'paid',
         })
-          .select('totalAmount')
+          .select('totalAmount commissionPercent platformCommissionAmount')
           .lean(),
         CompetitionVoteTransaction.find({
           organizerId: organizer._id,
           status: 'paid',
         })
-          .select(
-            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
-          )
+          .select('totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent')
           .lean(),
         MerchOrder.find({
           organizerId: organizer._id,
           paymentStatus: 'paid',
         })
-          .select(
-            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
-          )
+          .select('totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent')
           .lean(),
       ]);
 
-    const ticketRevenue = paidOrders.reduce(
-      (sum, item) => sum + toNumber(item?.totalAmount || 0),
+    const ticketOrganizerEarnings = paidOrders.reduce(
+      (sum, item) => sum + computeTicketNetAmount(item),
       0
     );
     const competitionOrganizerEarnings = paidCompetitionTransactions.reduce(
@@ -129,7 +168,18 @@ export async function GET() {
       0
     );
     const organizerEarningsTotal =
-      ticketRevenue + competitionOrganizerEarnings + merchandiseOrganizerEarnings;
+      ticketOrganizerEarnings +
+      competitionOrganizerEarnings +
+      merchandiseOrganizerEarnings;
+    const platformCommissionTotal = [
+      ...paidOrders,
+      ...paidCompetitionTransactions,
+      ...paidMerchOrders,
+    ].reduce(
+      (sum, transaction) =>
+        sum + computePlatformCommissionAmount(transaction),
+      0
+    );
 
     const reservedStatuses = new Set([
       'pending',
@@ -138,7 +188,13 @@ export async function GET() {
     ]);
     const reservedDisbursementAmount = requests
       .filter((item) => reservedStatuses.has(String(item?.status || '')))
-      .reduce((sum, item) => sum + toNumber(item?.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          toNumber(item?.amount || 0) +
+          toNumber(item?.transactionCost || 0),
+        0
+      );
 
     const fundsAvailableForDisbursement = Math.max(
       0,
@@ -150,6 +206,7 @@ export async function GET() {
       requests,
       funds: {
         organizerEarnings: organizerEarningsTotal,
+        platformCommission: platformCommissionTotal,
         reservedDisbursementAmount,
         fundsAvailableForDisbursement,
       },
@@ -188,7 +245,8 @@ export async function POST(req) {
     const body = await req.json();
     const mpesaNumber = normalizePhone(body?.mpesaNumber);
     const accountName = String(body?.accountName || '').trim();
-    const amount = Math.max(0, Number(body?.amount || 0));
+    const amount = Number(body?.amount || 0);
+    const transactionCost = Number(body?.transactionCost || 0);
     const requestPurpose = String(body?.requestPurpose || '').trim();
     const eventId = String(body?.eventId || '').trim();
     const sourceType =
@@ -264,9 +322,15 @@ export async function POST(req) {
       );
     }
 
-    if (amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
         { success: false, message: 'Withdrawal amount must be greater than 0' },
+        { status: 400 }
+      );
+    }
+    if (!Number.isFinite(transactionCost) || transactionCost < 0) {
+      return NextResponse.json(
+        { success: false, message: 'Enter a valid M-PESA transaction cost.' },
         { status: 400 }
       );
     }
@@ -282,31 +346,27 @@ export async function POST(req) {
           organizerId: organizer._id,
           status: 'paid',
         })
-          .select('totalAmount')
+          .select('totalAmount commissionPercent platformCommissionAmount')
           .lean(),
         CompetitionVoteTransaction.find({
           organizerId: organizer._id,
           status: 'paid',
         })
-          .select(
-            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
-          )
+          .select('totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent')
           .lean(),
         MerchOrder.find({
           organizerId: organizer._id,
           paymentStatus: 'paid',
         })
-          .select(
-            'totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent'
-          )
+          .select('totalAmount organizerEarningsAmount platformCommissionAmount commissionPercent')
           .lean(),
         FundRequest.find({ organizerId: organizer._id })
-          .select('amount status')
+          .select('amount transactionCost status')
           .lean(),
       ]);
 
-    const ticketRevenue = paidOrders.reduce(
-      (sum, item) => sum + toNumber(item?.totalAmount || 0),
+    const ticketOrganizerEarnings = paidOrders.reduce(
+      (sum, item) => sum + computeTicketNetAmount(item),
       0
     );
     const competitionOrganizerEarnings = paidCompetitionTransactions.reduce(
@@ -318,7 +378,9 @@ export async function POST(req) {
       0
     );
     const organizerEarningsTotal =
-      ticketRevenue + competitionOrganizerEarnings + merchandiseOrganizerEarnings;
+      ticketOrganizerEarnings +
+      competitionOrganizerEarnings +
+      merchandiseOrganizerEarnings;
 
     const reservedStatuses = new Set([
       'pending',
@@ -327,18 +389,24 @@ export async function POST(req) {
     ]);
     const reservedDisbursementAmount = existingRequests
       .filter((item) => reservedStatuses.has(String(item?.status || '')))
-      .reduce((sum, item) => sum + toNumber(item?.amount || 0), 0);
+      .reduce(
+        (sum, item) =>
+          sum +
+          toNumber(item?.amount || 0) +
+          toNumber(item?.transactionCost || 0),
+        0
+      );
 
     const fundsAvailableForDisbursement = Math.max(
       0,
       organizerEarningsTotal - reservedDisbursementAmount
     );
 
-    if (amount > fundsAvailableForDisbursement) {
+    if (amount + transactionCost > fundsAvailableForDisbursement) {
       return NextResponse.json(
         {
           success: false,
-          message: `Requested amount exceeds available disbursement balance (${Math.round(
+          message: `Payout amount plus transaction cost exceeds available disbursement balance (${Math.round(
             fundsAvailableForDisbursement
           )}).`,
           fundsAvailableForDisbursement,
@@ -359,6 +427,7 @@ export async function POST(req) {
       mpesaNumber,
       accountName,
       amount,
+      transactionCost,
       requestPurpose,
       status: 'pending',
     });
@@ -369,7 +438,7 @@ export async function POST(req) {
       request,
       fundsAvailableForDisbursement: Math.max(
         0,
-        fundsAvailableForDisbursement - amount
+        fundsAvailableForDisbursement - amount - transactionCost
       ),
     });
   } catch (error) {

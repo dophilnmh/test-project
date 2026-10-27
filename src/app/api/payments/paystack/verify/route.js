@@ -34,7 +34,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         success: false,
-        message: 'Unable to verify card payment right now.',
+        message: error?.message || 'Unable to verify card payment right now.',
       },
       { status: 500 }
     );

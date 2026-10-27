@@ -74,14 +74,16 @@ async function sendCompletionNotifications(request, status, reviewNote) {
           <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111;">
             <h2>Fund Request ${status === 'approved' ? 'Approved' : 'Rejected'}</h2>
             <p><strong>Organizer:</strong> ${request.organizerName}</p>
-            <p><strong>Amount:</strong> ${request.amount}</p>
+            <p><strong>Payout amount:</strong> ${request.amount}</p>
+            <p><strong>M-PESA transaction cost:</strong> ${request.transactionCost || 0}</p>
+            <p><strong>Total deducted from available funds:</strong> ${Number(request.amount || 0) + Number(request.transactionCost || 0)}</p>
             ${request.accountName ? `<p><strong>Account Name:</strong> ${request.accountName}</p>` : ''}
             <p><strong>Status:</strong> ${request.status}</p>
             ${request.requestPurpose ? `<p><strong>Purpose:</strong> ${request.requestPurpose}</p>` : ''}
             ${reviewNote ? `<p><strong>Reason/Note:</strong> ${reviewNote}</p>` : ''}
           </div>
         `,
-        text: `Your fund request for ${request.amount} has been ${messageLabel}. Status: ${request.status}.${reviewNote ? ` Note: ${reviewNote}.` : ''}`,
+        text: `Your fund request for ${request.amount} plus transaction cost ${request.transactionCost || 0} has been ${messageLabel}. Status: ${request.status}.${reviewNote ? ` Note: ${reviewNote}.` : ''}`,
         attachments,
       })
     );
@@ -96,7 +98,8 @@ async function sendCompletionNotifications(request, status, reviewNote) {
           <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111;">
             <h2>Fund Request ${status === 'approved' ? 'Approved' : 'Rejected'}</h2>
             <p><strong>Organizer:</strong> ${request.organizerName}</p>
-            <p><strong>Amount:</strong> ${request.amount}</p>
+            <p><strong>Payout amount:</strong> ${request.amount}</p>
+            <p><strong>M-PESA transaction cost:</strong> ${request.transactionCost || 0}</p>
             <p><strong>Status:</strong> ${request.status}</p>
           </div>
         `,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Copy, Link2 } from 'lucide-react';
 import { formatKsh } from '@/lib/currency';
 
 export default function OrganizerShopPage() {
@@ -8,6 +9,7 @@ export default function OrganizerShopPage() {
   const [orders, setOrders] = useState([]);
   const [events, setEvents] = useState([]);
   const [feedback, setFeedback] = useState('');
+  const [copiedShopLink, setCopiedShopLink] = useState(false);
   const [creating, setCreating] = useState(false);
   const [files, setFiles] = useState([]);
   const [form, setForm] = useState({
@@ -96,6 +98,25 @@ export default function OrganizerShopPage() {
       await loadData();
     } finally {
       setCreating(false);
+    }
+  };
+
+  const copyShopLink = async () => {
+    const organizerId = products.find((product) => product.organizerId)
+      ?.organizerId;
+    if (!organizerId) {
+      setFeedback('Add a product before sharing your shop link.');
+      return;
+    }
+
+    const link = new URL('/shop', window.location.origin);
+    link.searchParams.set('organizerId', organizerId);
+    try {
+      await navigator.clipboard.writeText(link.toString());
+      setCopiedShopLink(true);
+      setFeedback('Shop link copied to the clipboard.');
+    } catch {
+      setFeedback('Unable to copy the shop link.');
     }
   };
 
@@ -214,7 +235,21 @@ export default function OrganizerShopPage() {
       </section>
 
       <section className="rounded-2xl border border-border bg-card/80 p-6">
-        <h2 className="text-xl font-semibold text-foreground">My Products</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold text-foreground">My Products</h2>
+          <button
+            type="button"
+            onClick={copyShopLink}
+            className="inline-flex items-center gap-2 rounded-md border border-primary/40 px-3 py-2 text-sm text-primary hover:bg-primary/10"
+          >
+            {copiedShopLink ? (
+              <Copy className="h-4 w-4" />
+            ) : (
+              <Link2 className="h-4 w-4" />
+            )}
+            {copiedShopLink ? 'Shop link copied' : 'Copy shop link'}
+          </button>
+        </div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>

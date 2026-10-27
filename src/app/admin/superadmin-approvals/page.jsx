@@ -659,7 +659,8 @@ export default function SuperadminApprovalInboxPage() {
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
                   <th className="px-2 py-3">Organizer</th>
-                  <th className="px-2 py-3">Amount</th>
+                  <th className="px-2 py-3">Payout</th>
+                  <th className="px-2 py-3">Transaction Cost</th>
                   <th className="px-2 py-3">M-PESA</th>
                   <th className="px-2 py-3">State</th>
                   <th className="px-2 py-3">Email Approvals</th>
@@ -669,7 +670,7 @@ export default function SuperadminApprovalInboxPage() {
               <tbody>
                 {(pending.funds || []).length === 0 ? (
                   <tr>
-                    <td className="px-2 py-4 text-muted-foreground" colSpan={6}>
+                    <td className="px-2 py-4 text-muted-foreground" colSpan={7}>
                       No pending fund requests.
                     </td>
                   </tr>
@@ -681,6 +682,9 @@ export default function SuperadminApprovalInboxPage() {
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
                         {formatKsh(request.amount)}
+                      </td>
+                      <td className="px-2 py-3 text-muted-foreground">
+                        {formatKsh(request.transactionCost || 0)}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
                         {request.mpesaNumber}

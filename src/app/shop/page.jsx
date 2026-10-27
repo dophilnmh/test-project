@@ -15,6 +15,7 @@ import {
 
 export default function ShopPage() {
   const [products, setProducts] = useState([]);
+  const [organizerName, setOrganizerName] = useState('');
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
@@ -27,10 +28,19 @@ export default function ShopPage() {
   const loadProducts = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/shop/products', { cache: 'no-store' });
+      const organizerId = new URLSearchParams(window.location.search).get(
+        'organizerId'
+      );
+      const productQuery = organizerId
+        ? `?organizerId=${encodeURIComponent(organizerId)}`
+        : '';
+      const response = await fetch(`/api/shop/products${productQuery}`, {
+        cache: 'no-store',
+      });
       const data = await response.json();
       if (response.ok && data?.success) {
         setProducts(data.products || []);
+        setOrganizerName(data.organizerName || '');
 
         const initial = {};
         for (const product of data.products || []) {
@@ -51,6 +61,13 @@ export default function ShopPage() {
 
   useEffect(() => {
     loadProducts();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'failed') {
+      setError(params.get('message') || 'Card payment could not be completed.');
+    }
   }, []);
 
   useEffect(() => {
@@ -100,7 +117,9 @@ export default function ShopPage() {
               Merch Store
             </p>
             <h1 className="mt-2 text-3xl font-bold text-foreground md:text-4xl">
-              Official Merchandise Shop
+              {organizerName
+                ? `${organizerName} Shop`
+                : 'Official Merchandise Shop'}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground md:text-base">
               Sell branded products, track inventory, and process orders from
@@ -194,7 +213,7 @@ export default function ShopPage() {
                       fill
                       unoptimized
                       aria-hidden={index !== imageIndex}
-                      className={`object-cover transition-opacity duration-500 ${
+                      className={`object-contain transition-opacity duration-500 ${
                         index === imageIndex ? 'opacity-100' : 'opacity-0'
                       }`}
                     />
@@ -322,7 +341,7 @@ export default function ShopPage() {
                         )
                       }
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="Delivery location"
+                      placeholder="Delivery location (estate, landmark, town, etc.)"
                       required
                     />
                   </div>
@@ -365,6 +384,11 @@ export default function ShopPage() {
             );
           })}
         </div>
+        {!loading && products.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+            No products are currently available in this shop.
+          </div>
+        ) : null}
       </section>
     </Layout>
   );

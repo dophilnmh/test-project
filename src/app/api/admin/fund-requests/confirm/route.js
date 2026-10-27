@@ -40,7 +40,9 @@ async function finalizeIfReady(requestId) {
           <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111;">
             <h2>Fund Request Approved</h2>
             <p><strong>Organizer:</strong> ${request.organizerName}</p>
-            <p><strong>Amount:</strong> ${request.amount}</p>
+            <p><strong>Payout amount:</strong> ${request.amount}</p>
+            <p><strong>M-PESA transaction cost:</strong> ${request.transactionCost || 0}</p>
+            <p><strong>Total deducted from available funds:</strong> ${Number(request.amount || 0) + Number(request.transactionCost || 0)}</p>
             <p><strong>Status:</strong> ${request.status}</p>
             <p>Your request is approved for payout processing. The approval receipt is attached as a PDF.</p>
           </div>

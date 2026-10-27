@@ -404,9 +404,10 @@ export function MpesaCheckoutButton({
             if (typeof onPaymentSuccess === 'function') {
               onPaymentSuccess(verification);
             }
-          } catch {
+          } catch (verificationError) {
             setError(
-              'Payment was submitted, but confirmation is taking longer than expected. Please contact support before retrying.'
+              verificationError?.message ||
+                'Payment was submitted, but confirmation is taking longer than expected. Please contact support before retrying.'
             );
           } finally {
             setLoading(false);
@@ -430,8 +431,11 @@ export function MpesaCheckoutButton({
           );
         },
       });
-    } catch {
-      setError('Unable to reach the card checkout service. Please try again.');
+    } catch (checkoutError) {
+      setError(
+        checkoutError?.message ||
+          'Unable to reach the card checkout service. Please try again.'
+      );
     } finally {
       setLoading(false);
     }

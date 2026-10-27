@@ -24,7 +24,11 @@ async function createUniqueTicketCode() {
 
 export async function finalizePaystackTicket(reference) {
   const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
-  if (!secretKey) throw new Error('Paystack is not configured.');
+  if (!secretKey) {
+    throw new Error(
+      'Missing required environment variable: PAYSTACK_SECRET_KEY'
+    );
+  }
 
   await connect();
   const order = await TicketOrder.findOne({ checkoutRequestId: reference });

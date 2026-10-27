@@ -102,6 +102,7 @@ function emptyFundRequest() {
     mpesaNumber: '',
     accountName: '',
     amount: '',
+    transactionCost: '',
     requestPurpose: '',
   };
 }
@@ -212,6 +213,7 @@ export default function OrganizerDashboardPage() {
   const [fundRequests, setFundRequests] = useState([]);
   const [fundsSnapshot, setFundsSnapshot] = useState({
     organizerEarnings: 0,
+    platformCommission: 0,
     reservedDisbursementAmount: 0,
     fundsAvailableForDisbursement: 0,
   });
@@ -607,6 +609,7 @@ export default function OrganizerDashboardPage() {
         setFundRequests(Array.isArray(data.requests) ? data.requests : []);
         setFundsSnapshot({
           organizerEarnings: Number(data?.funds?.organizerEarnings || 0),
+          platformCommission: Number(data?.funds?.platformCommission || 0),
           reservedDisbursementAmount: Number(
             data?.funds?.reservedDisbursementAmount || 0
           ),
@@ -619,6 +622,7 @@ export default function OrganizerDashboardPage() {
       setFundRequests([]);
       setFundsSnapshot({
         organizerEarnings: 0,
+        platformCommission: 0,
         reservedDisbursementAmount: 0,
         fundsAvailableForDisbursement: 0,
       });
@@ -1250,7 +1254,8 @@ export default function OrganizerDashboardPage() {
 
     const mpesaNumber = normalizeMpesaNumber(fundRequestForm.mpesaNumber);
     const accountName = String(fundRequestForm.accountName || '').trim();
-    const amount = Math.max(0, Number(fundRequestForm.amount || 0));
+    const amount = Number(fundRequestForm.amount || 0);
+    const transactionCost = Number(fundRequestForm.transactionCost || 0);
     const requestPurpose = String(fundRequestForm.requestPurpose || '').trim();
     const selectedSource = String(fundRequestForm.eventId || '').trim();
     const [sourceType, sourceId] = selectedSource.split(':', 2);
@@ -1267,15 +1272,24 @@ export default function OrganizerDashboardPage() {
       return;
     }
 
-    if (amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       setError('Withdrawal amount must be greater than 0.');
       setSubmittingFundRequest(false);
       return;
     }
 
-    if (amount > Number(fundsSnapshot.fundsAvailableForDisbursement || 0)) {
+    if (!Number.isFinite(transactionCost) || transactionCost < 0) {
+      setError('Enter a valid M-PESA transaction cost.');
+      setSubmittingFundRequest(false);
+      return;
+    }
+
+    if (
+      amount + transactionCost >
+      Number(fundsSnapshot.fundsAvailableForDisbursement || 0)
+    ) {
       setError(
-        `Requested amount exceeds available funds for disbursement (${formatKsh(
+        `Payout amount plus transaction cost exceeds available funds for disbursement (${formatKsh(
           fundsSnapshot.fundsAvailableForDisbursement || 0
         )}).`
       );
@@ -1295,6 +1309,7 @@ export default function OrganizerDashboardPage() {
           mpesaNumber,
           accountName,
           amount,
+          transactionCost,
           requestPurpose,
         }),
       });
@@ -3744,25 +3759,25 @@ export default function OrganizerDashboardPage() {
                 purpose.
               </p>
 
-              <div className="mt-4 space-y-1 rounded-xl border border-border/70 bg-background/50 p-3 text-xs text-muted-foreground">
+              <div className="mt-4 space-y-2 rounded-xl border border-border/70 bg-background/50 p-3 text-xs text-muted-foreground">
                 <p>
-                  Organizer earnings:{' '}
+                  Amount available for disbursement:{' '}
                   <span className="font-semibold text-foreground">
-                    {formatKsh(fundsSnapshot.organizerEarnings || 0)}
+                    {formatKsh(
+                      fundsSnapshot.fundsAvailableForDisbursement || 0
+                    )}
+                  </span>
+                </p>
+                <p>
+                  Platform commission:{' '}
+                  <span className="font-semibold text-foreground">
+                    {formatKsh(fundsSnapshot.platformCommission || 0)}
                   </span>
                 </p>
                 <p>
                   Reserved disbursements:{' '}
                   <span className="font-semibold text-foreground">
                     {formatKsh(fundsSnapshot.reservedDisbursementAmount || 0)}
-                  </span>
-                </p>
-                <p>
-                  Funds available for disbursement:{' '}
-                  <span className="font-semibold text-success">
-                    {formatKsh(
-                      fundsSnapshot.fundsAvailableForDisbursement || 0
-                    )}
                   </span>
                 </p>
               </div>
@@ -3848,11 +3863,12 @@ export default function OrganizerDashboardPage() {
                   max={Math.max(
                     1,
                     Math.floor(
-                      Number(fundsSnapshot.fundsAvailableForDisbursement || 0)
+                      Number(fundsSnapshot.fundsAvailableForDisbursement || 0) -
+                        Number(fundRequestForm.transactionCost || 0)
                     )
                   )}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Amount to withdraw"
+                  placeholder="Payout amount you will receive"
                   value={fundRequestForm.amount}
                   onChange={(e) =>
                     setFundRequestForm((prev) => ({
@@ -3862,6 +3878,29 @@ export default function OrganizerDashboardPage() {
                   }
                   required
                 />
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    M-PESA transaction cost (deducted from available funds)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    max={Math.max(
+                      0,
+                      Number(fundsSnapshot.fundsAvailableForDisbursement || 0)
+                    )}
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Enter M-PESA transaction cost"
+                    value={fundRequestForm.transactionCost}
+                    onChange={(e) =>
+                      setFundRequestForm((prev) => ({
+                        ...prev,
+                        transactionCost: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
                 <textarea
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                   placeholder="Purpose / note for this disbursement"
@@ -3906,7 +3945,11 @@ export default function OrganizerDashboardPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-foreground">
-                            {formatKsh(request.amount)}
+                            Payout: {formatKsh(request.amount)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Transaction cost:{' '}
+                            {formatKsh(request.transactionCost || 0)}
                           </p>
                           {request.eventTitle ? (
                             <p className="text-xs font-semibold text-primary">

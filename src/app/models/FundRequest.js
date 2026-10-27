@@ -35,6 +35,7 @@ const fundRequestSchema = new Schema(
     mpesaNumber: { type: String, required: true },
     accountName: { type: String, default: '' },
     amount: { type: Number, required: true, min: 1 },
+    transactionCost: { type: Number, default: 0, min: 0 },
     requestPurpose: { type: String, default: '' },
     status: {
       type: String,

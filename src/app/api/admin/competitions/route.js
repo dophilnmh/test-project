@@ -4,14 +4,14 @@ import connect from '@/app/utils/db';
 import { auth } from '@/app/auth';
 import Event from '@/app/models/Event';
 import Organizer from '@/app/models/Organizer';
+import { parseDateTime } from '@/lib/dateTime';
 
 function ensureSuperadmin(session) {
   return String(session?.user?.role || '').toLowerCase() === 'superadmin';
 }
 
 function parseDateValue(value) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseDateTime(value);
 }
 
 function normalizeContestants(input) {

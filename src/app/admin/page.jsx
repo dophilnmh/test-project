@@ -822,7 +822,9 @@ export default function AdminDashboardPage() {
             <tr><td>Email</td><td>${request.organizerEmail || '-'}</td></tr>
             <tr><td>M-PESA number</td><td>${request.mpesaNumber || '-'}</td></tr>
             <tr><td>Account name</td><td>${request.accountName || '-'}</td></tr>
-            <tr><td>Amount</td><td>${formatKsh(request.amount)}</td></tr>
+            <tr><td>Payout amount</td><td>${formatKsh(request.amount)}</td></tr>
+            <tr><td>M-PESA transaction cost</td><td>${formatKsh(request.transactionCost || 0)}</td></tr>
+            <tr><td>Total deducted from available funds</td><td>${formatKsh(Number(request.amount || 0) + Number(request.transactionCost || 0))}</td></tr>
             <tr><td>Purpose</td><td>${request.requestPurpose || '-'}</td></tr>
             <tr><td>Status</td><td class="approved">APPROVED</td></tr>
             <tr><td>Approved on</td><td>${approvedOn ? new Date(approvedOn).toLocaleString() : '-'}</td></tr>
@@ -1551,7 +1553,8 @@ export default function AdminDashboardPage() {
                   <tr className="border-b border-border text-muted-foreground">
                     <th className="px-2 py-3">Organizer</th>
                     <th className="px-2 py-3">M-PESA Number</th>
-                    <th className="px-2 py-3">Amount</th>
+                    <th className="px-2 py-3">Payout</th>
+                    <th className="px-2 py-3">Transaction Cost</th>
                     <th className="px-2 py-3">Status</th>
                     <th className="px-2 py-3">Action</th>
                   </tr>
@@ -1567,6 +1570,9 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
                         {formatKsh(request.amount)}
+                      </td>
+                      <td className="px-2 py-3 text-muted-foreground">
+                        {formatKsh(request.transactionCost || 0)}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
                         {request.status}

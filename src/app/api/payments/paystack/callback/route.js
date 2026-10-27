@@ -57,18 +57,27 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error('Paystack return verification failed:', error);
-    return redirectToEvents(request, {
-      ticketPayment: 'failed',
-      message:
-        'Unable to verify the card payment. Contact support before retrying.',
-    });
+    const message =
+      error?.message ||
+      'Unable to verify the card payment. Contact support before retrying.';
+    const returnTo = new URL(request.url).searchParams.get('returnTo') || '';
+    if (returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+      return redirectToReturnPage(request, { payment: 'failed', message });
+    }
+    return redirectToEvents(request, { ticketPayment: 'failed', message });
   }
 }
 
 export async function POST(request) {
   const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
   if (!secretKey) {
-    return NextResponse.json({ success: false }, { status: 503 });
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Missing required environment variable: PAYSTACK_SECRET_KEY',
+      },
+      { status: 503 }
+    );
   }
 
   const rawBody = await request.text();

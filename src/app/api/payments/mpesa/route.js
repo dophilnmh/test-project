@@ -256,6 +256,7 @@ export async function POST(req) {
     const email = String(body.email || '')
       .trim()
       .toLowerCase();
+    const deliveryLocation = String(body.deliveryLocation ?? '');
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!phone) {
@@ -299,7 +300,7 @@ export async function POST(req) {
           { status: 400 }
         );
       }
-      if (!String(body.deliveryLocation || '').trim()) {
+      if (!deliveryLocation.trim()) {
         return NextResponse.json(
           { success: false, message: 'Delivery location is required.' },
           { status: 400 }
@@ -384,7 +385,7 @@ export async function POST(req) {
         quantity,
         unitPrice: Number(product.price || 0),
         commissionPercent,
-        deliveryLocation: String(body.deliveryLocation || '').trim(),
+        deliveryLocation,
         notes: String(body.notes || '').trim(),
         buyerName: String(body.buyerName || '').trim(),
       };
